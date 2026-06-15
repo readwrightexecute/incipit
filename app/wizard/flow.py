@@ -61,29 +61,32 @@ async def _emit(s: Session, event: str, data: str = "") -> None:
     s.publish(event, data)
 
 
-async def _generate(s: Session, prompt: str, max_tokens: int = 2048) -> str:
-    """One LLM call with progress/model-loading heartbeat events."""
-    notify_task = asyncio.create_task(_heartbeat(s))
+async def _generate(s: Session, prompt: str, max_tokens: int = 2048,
+                    label: str = "Working") -> str:
+    """One LLM call with a contextual progress/model-loading heartbeat."""
+    notify_task = asyncio.create_task(_heartbeat(s, label))
     try:
         return await backend.generate(prompt, system=SYSTEM, max_tokens=max_tokens)
     finally:
         notify_task.cancel()
 
 
-async def _heartbeat(s: Session) -> None:
+async def _heartbeat(s: Session, label: str) -> None:
+    """Emit a live status line ('<label>… (Ns)') so the user always sees what
+    is being generated and for how long — fires immediately, then every 5s."""
     try:
-        cold = getattr(backend, "status", "ready") == "cold"
-        if cold:
-            await _emit(s, "model_loading",
-                        "Loading model (cold start, can take a minute)…")
         start = asyncio.get_event_loop().time()
         while True:
-            await asyncio.sleep(5)
             elapsed = int(asyncio.get_event_loop().time() - start)
-            if getattr(backend, "status", "ready") == "loading":
-                await _emit(s, "model_loading", f"Loading model… ({elapsed}s)")
+            status = getattr(backend, "status", "ready")
+            if status in ("cold", "loading"):
+                await _emit(s, "model_loading",
+                            f'<span class="spinner"></span> Loading model '
+                            f'(cold start, can take a minute)… ({elapsed}s)')
             else:
-                await _emit(s, "progress", f"Generating… ({elapsed}s)")
+                await _emit(s, "progress",
+                            f'<span class="spinner"></span> {label}… ({elapsed}s)')
+            await asyncio.sleep(5)
     except asyncio.CancelledError:
         pass
 
@@ -113,7 +116,8 @@ async def run_clarify(s: Session) -> None:
         await _emit(s, "job_started", "clarify")
         tmpl = _jinja.get_template("clarify.md.j2")
         prompt = tmpl.render(n_questions=N_QUESTIONS.get(s.stakes, 6), **_ctx(s))
-        text = await _generate(s, prompt, max_tokens=1536)
+        text = await _generate(s, prompt, max_tokens=1536,
+                               label="Thinking up the right questions")
         s.qas = parse_questions(text)
         if not s.qas:
             raise GenerationError(f"could not parse questions from model output: {text[:200]}")
@@ -141,7 +145,8 @@ async def run_sections(s: Session) -> None:
         {"question": q.question, "answer": q.answer or f"(assumed) {q.assumption}"}
         for q in s.qas
     ]
-    for sec in s.sections:
+    total = len(s.sections)
+    for i, sec in enumerate(s.sections, 1):
         try:
             sec.status = "generating"
             await _emit(s, "section_started", sec.id)
@@ -154,7 +159,7 @@ async def run_sections(s: Session) -> None:
                 qas=qas, prior_sections=prior,
                 instruction=sec.instruction, title=sec.title, **_ctx(s),
             )
-            sec.content = await _generate(s, prompt)
+            sec.content = await _generate(s, prompt, label=f"Drafting {i}/{total}: {sec.title}")
             sec.status = "done"
             await _emit(s, "section_done", sec.id)
         except Exception as e:
@@ -187,7 +192,7 @@ async def run_single_section(s: Session, sid: str) -> None:
             qas=qas, prior_sections=prior,
             instruction=sec.instruction, title=sec.title, **_ctx(s),
         )
-        sec.content = await _generate(s, prompt)
+        sec.content = await _generate(s, prompt, label=f"Re-drafting: {sec.title}")
         sec.status = "done"
         await _emit(s, "section_done", sec.id)
     except Exception as e:
@@ -210,7 +215,7 @@ async def refine_section(s: Session, sec: Section, instruction: str) -> bool:
             title=sec.title, content=sec.history[-1],
             method_instruction=instruction, **_ctx(s),
         )
-        sec.content = await _generate(s, prompt)
+        sec.content = await _generate(s, prompt, label=f"Refining: {sec.title}")
         sec.status = "done"
         await _emit(s, "section_done", sec.id)
         return True
