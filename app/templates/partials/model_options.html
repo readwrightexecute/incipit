@@ -1,0 +1,9 @@
+{% if error %}
+  <span class="error">{{ error }}</span>
+{% else %}
+  Found {{ models|length }} model{{ "" if models|length == 1 else "s" }} — pick from the Model field.
+{% endif %}
+{# Populate the datalist via out-of-band swap so the Model input autocompletes. #}
+<datalist id="model-options" hx-swap-oob="true">
+  {% for m in models %}<option value="{{ m }}"></option>{% endfor %}
+</datalist>

@@ -1,0 +1,15 @@
+<div id="section-{{ sec.id }}">
+  <article>
+    <header><h3>{{ sec.title }}</h3></header>
+    <form hx-post="/sessions/{{ s.id }}/sections/{{ sec.id }}/edit"
+          hx-target="#section-{{ sec.id }}" hx-swap="outerHTML">
+      <textarea name="content" rows="14" autofocus>{{ sec.content }}</textarea>
+      <div class="refine-row">
+        <button type="submit">Save</button>
+        <button type="button" class="secondary outline"
+                hx-get="/sessions/{{ s.id }}/sections/{{ sec.id }}"
+                hx-target="#section-{{ sec.id }}" hx-swap="outerHTML">Cancel</button>
+      </div>
+    </form>
+  </article>
+</div>

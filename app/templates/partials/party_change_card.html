@@ -1,0 +1,24 @@
+<div id="change-{{ ch.id }}" class="change-card {{ ch.status }}"
+     {% if ch.status == 'applying' %}hx-get="/sessions/{{ s.id }}/party/changes/{{ ch.id }}"
+     hx-trigger="sse:party_changed, every 3s" hx-swap="outerHTML"{% endif %}>
+  <article>
+    <header><h3 style="font-size:1rem">{{ ch.section_title }}</h3></header>
+    <p style="margin-bottom:.3rem">{{ ch.instruction }}</p>
+    {% if ch.rationale %}<p class="assumption" style="margin-bottom:.5rem">Why: {{ ch.rationale }}</p>{% endif %}
+    {% if ch.status == 'pending' %}
+    <div class="refine-row">
+      <button hx-post="/sessions/{{ s.id }}/party/changes/{{ ch.id }}/approve"
+              hx-target="#change-{{ ch.id }}" hx-swap="outerHTML">Approve</button>
+      <button class="secondary outline"
+              hx-post="/sessions/{{ s.id }}/party/changes/{{ ch.id }}/deny"
+              hx-target="#change-{{ ch.id }}" hx-swap="outerHTML">Deny</button>
+    </div>
+    {% elif ch.status == 'applying' %}
+    <p><span class="spinner"></span> Applying to “{{ ch.section_title }}”…</p>
+    {% elif ch.status == 'applied' %}
+    <p style="color:#38a169">✓ Applied to “{{ ch.section_title }}” — the mega-prompt below is updated.</p>
+    {% elif ch.status == 'denied' %}
+    <p class="assumption">Denied — not applied.</p>
+    {% endif %}
+  </article>
+</div>

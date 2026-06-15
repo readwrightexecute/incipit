@@ -1,0 +1,19 @@
+{% if s.party_status == 'running' %}
+{# still deliberating — changes appear once consensus is reached #}
+{% elif s.party_changes %}
+<div style="margin-top:1rem">
+  <header><strong>Proposed changes</strong> ({{ s.party_changes|length }}) — consensus of the round table</header>
+  {% set pending = s.party_changes | selectattr('status', 'equalto', 'pending') | list %}
+  {% if pending %}
+  <p>
+    <button hx-post="/sessions/{{ s.id }}/party/approve-all"
+            hx-target="#party-changes" hx-swap="innerHTML">Approve all {{ pending|length }}</button>
+  </p>
+  {% endif %}
+  {% for ch in s.party_changes %}
+  {% include "partials/party_change_card.html" %}
+  {% endfor %}
+</div>
+{% elif s.party_status == 'ready' %}
+<p class="assumption" style="margin-top:1rem">The round table proposed no changes — your spec held up. 🎉</p>
+{% endif %}

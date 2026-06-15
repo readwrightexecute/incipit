@@ -1,0 +1,10 @@
+{% for m in s.party_messages %}
+{% if m.kind == 'system' %}
+<div class="bubble system"><div class="msg">{{ m.text }}</div></div>
+{% else %}
+<div class="bubble {{ m.kind }}">
+  <div class="who">{{ m.emoji }} {{ m.name }} <small>· {{ m.role }}</small></div>
+  <div class="msg">{{ m.text }}</div>
+</div>
+{% endif %}
+{% endfor %}

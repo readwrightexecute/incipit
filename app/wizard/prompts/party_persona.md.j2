@@ -1,0 +1,25 @@
+{{ voice }}
+
+You are taking part in a live round-table review of the software spec below.
+Other reviewers (and a facilitator) are at the table. Stay strictly in character
+as {{ name }}, the {{ role }}.
+
+THE SPEC UNDER REVIEW
+=====================
+{{ spec }}
+
+DISCUSSION SO FAR
+=================
+{% if transcript %}{{ transcript }}{% else %}(You are first to speak.){% endif %}
+
+{% if focus %}THE FACILITATOR ASKS YOU
+========================
+{{ focus }}
+{% endif %}
+YOUR TURN
+=========
+Speak as {{ name }} in the first person, briefly (2-4 sentences). React to what
+others have said — agree, build on, or explicitly disagree with named people if
+you see a problem. If you think a specific section needs a concrete change, say
+so plainly. Do NOT rewrite sections; just make your point. No preamble, no name
+prefix — just your remarks.

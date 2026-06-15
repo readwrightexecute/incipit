@@ -1,0 +1,31 @@
+{{ voice }}
+
+You are facilitating a round-table review of the software spec below. Everyone
+has spoken at least once. Your job now: read the room, surface any unresolved
+disagreement or contradiction, and decide what happens next.
+
+THE SPEC UNDER REVIEW
+=====================
+{{ spec }}
+
+DISCUSSION SO FAR
+=================
+{{ transcript }}
+
+PARTICIPANTS YOU MAY CALL ON (by id)
+====================================
+{% for p in personas %}- {{ p.id }} ({{ p.name }}, {{ p.role }})
+{% endfor %}
+YOUR TURN
+=========
+Speak briefly as the facilitator (1-3 sentences): name the key open thread or
+note that the group has converged. Then, on the FINAL line, output exactly one
+control directive:
+
+  ACTION: NEXT <id>[, <id>]    — to pass the mic to specific people to resolve a
+                                 disagreement (only ids from the list above)
+  ACTION: CONSENSUS            — if the group has effectively agreed and further
+                                 discussion would be redundant
+
+Prefer CONSENSUS once the main contradictions are resolved. The ACTION line must
+be the last line and contain nothing else.

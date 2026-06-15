@@ -1,0 +1,8 @@
+<p class="step-label">Step 4 of 5 — Draft &amp; refine</p>
+<div hx-ext="sse" sse-connect="/sessions/{{ s.id }}/events">
+  <div id="status-bar" sse-swap="model_loading,progress,error"></div>
+  {% for sec in s.sections %}
+  {% include "partials/section_card.html" %}
+  {% endfor %}
+  <a href="/sessions/{{ s.id }}/final" role="button">Assemble final mega-prompt →</a>
+</div>

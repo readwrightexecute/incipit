@@ -1,0 +1,39 @@
+<article id="settings-panel">
+  <header><strong>Settings</strong> — model endpoint</header>
+  {% if not openai %}
+    <p class="assumption">A diffusion backend is active; these settings apply only to the
+      OpenAI-compatible backend (set <code>PROMPTGEN_BACKEND=openai</code>).</p>
+  {% endif %}
+  <form hx-post="/settings" hx-target="#settings-panel" hx-swap="outerHTML">
+    <label for="base_url">Endpoint base URL
+      <input type="text" id="base_url" name="base_url" value="{{ cfg.base_url }}"
+        placeholder="http://localhost:11434/v1">
+    </label>
+    <small class="assumption">Ollama <code>:11434/v1</code> · LM Studio <code>:1234/v1</code> ·
+      llama-server <code>:8080/v1</code> · OpenAI <code>https://api.openai.com/v1</code></small>
+
+    <label for="model">Model
+      <input type="text" id="model" name="model" value="{{ cfg.model }}"
+        list="model-options" placeholder="e.g. llama3.1 or gpt-4o-mini">
+    </label>
+    <datalist id="model-options"></datalist>
+    <button type="button" class="secondary" style="width:auto"
+      hx-get="/settings/models" hx-include="#base_url,#api_key"
+      hx-target="#model-status" hx-swap="innerHTML">Test / list models</button>
+    <span id="model-status" class="assumption"></span>
+
+    <label for="api_key">API key <span class="assumption">(blank for local servers)</span>
+      <input type="password" id="api_key" name="api_key" value="{{ cfg.api_key }}"
+        placeholder="sk-… (only for OpenAI / authed endpoints)">
+    </label>
+
+    <label for="disable_thinking">
+      <input type="checkbox" id="disable_thinking" name="disable_thinking" role="switch"
+        {% if cfg.disable_thinking %}checked{% endif %}>
+      Disable model "thinking" <span class="assumption">(local reasoning models only; OpenAI rejects this)</span>
+    </label>
+
+    <button type="submit">Save settings</button>
+    {% if saved %}<span class="assumption">✓ Saved — next generation uses these.</span>{% endif %}
+  </form>
+</article>

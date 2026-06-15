@@ -1,0 +1,16 @@
+<p class="step-label">🌙 Shoot the Moon</p>
+<div hx-ext="sse" sse-connect="/sessions/{{ s.id }}/events">
+  <p><span class="spinner"></span> Running the whole thing on your idea — calibration,
+    smart-default answers, a full spec draft, then a BMAD round table whose consensus
+    is applied automatically. This takes a few minutes; watch it unfold below.</p>
+
+  <div id="status-bar" sse-swap="model_loading,progress,moon,error"></div>
+  <div id="party-turn" class="party-turn" sse-swap="party_turn"></div>
+
+  <div id="party-chat" class="chat" sse-swap="party_msg" hx-swap="beforeend">
+    {% include "partials/party_chat.html" %}
+  </div>
+
+  {# Poll for completion; the route returns HX-Redirect to the final page when done. #}
+  <div hx-get="/sessions/{{ s.id }}/moon/status" hx-trigger="load, every 3s" hx-swap="none"></div>
+</div>

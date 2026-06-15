@@ -1,0 +1,32 @@
+{{ voice }}
+
+The round-table review has concluded. Below is the spec and the full discussion.
+Distill the discussion into the concrete, agreed-upon changes to the spec —
+only changes the group actually supported (resolve contradictions in favor of
+the consensus that emerged). Skip points that were raised and then dropped.
+
+THE SPEC
+========
+{{ spec }}
+
+FULL DISCUSSION
+===============
+{{ transcript }}
+
+SECTIONS YOU MAY TARGET (use the exact id)
+==========================================
+{% for sec in sections %}- {{ sec.id }} — {{ sec.title }}
+{% endfor %}
+OUTPUT
+======
+Output ONLY a list of change blocks, nothing else. One block per agreed change,
+in this exact format, separated by a line with three dashes:
+
+SECTION: <one id from the list above>
+CHANGE: <a single imperative instruction telling an editor how to revise that section>
+WHY: <one short sentence — the consensus reason>
+---
+
+Write each CHANGE as a self-contained instruction (e.g. "Add a non-functional
+requirement capping p95 API latency at 200ms"). If the group reached no concrete
+changes, output exactly: NO CHANGES.

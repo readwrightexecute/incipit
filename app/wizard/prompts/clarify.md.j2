@@ -1,0 +1,18 @@
+A user wants to build the following:
+
+IDEA:
+{{ idea }}
+
+STAKES: {{ stakes }} ({{ stakes_hint }})
+FORM FACTOR: {{ form_factor }}
+
+Generate the {{ n_questions }} most important clarifying questions whose answers would most change how this gets built. For each question, also provide a sensible default answer prefixed with [ASSUMPTION] that will be used if the user skips it.
+
+Output format — EXACTLY this structure, nothing else:
+
+1. <question>
+[ASSUMPTION] <default answer>
+2. <question>
+[ASSUMPTION] <default answer>
+
+(continue for all {{ n_questions }} questions)

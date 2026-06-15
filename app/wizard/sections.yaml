@@ -1,0 +1,54 @@
+# BMAD v4-style section schema. Order here is the order sections are drafted
+# and assembled into the final mega-prompt.
+sections:
+  - id: goals
+    title: Goals & Background
+    instruction: >
+      Write a short "Goals & Background" section: 3-6 bullet points capturing the
+      desired outcomes, followed by one short paragraph of background context
+      explaining why this is being built. Capability language only — no
+      implementation details.
+
+  - id: functional_requirements
+    title: Functional Requirements
+    instruction: >
+      Write the functional requirements as a numbered list FR1, FR2, ... Each
+      requirement must be a single testable statement of WHAT the system does
+      (e.g. "FR3: Users can export the result as a markdown file"). Cover the
+      core happy path first, then secondary behaviors. 5-12 requirements
+      depending on stakes. Do not include performance/quality attributes here.
+
+  - id: non_functional_requirements
+    title: Non-Functional Requirements
+    instruction: >
+      Write the non-functional requirements as a numbered list NFR1, NFR2, ...
+      covering only the attributes that matter for these stakes: performance,
+      security/auth, reliability, resource constraints, compatibility. Keep it
+      to 3-7 items. Each must be concrete and checkable (e.g. "NFR2: First page
+      load under 2s on LAN"), not aspirational fluff.
+
+  - id: tech_constraints
+    title: Tech Constraints & Stack
+    instruction: >
+      Write a "Tech Constraints & Stack" section: a definitive bullet list of
+      the technology choices and constraints a coding agent must respect —
+      language/runtime, frameworks, storage, deployment target, existing systems
+      to integrate with, and anything explicitly ruled out. Derive choices from
+      the user's answers; where the user expressed no preference, choose the
+      simplest mainstream option and mark it "[ASSUMPTION]".
+
+  - id: acceptance_criteria
+    title: Acceptance Criteria
+    instruction: >
+      Write the acceptance criteria as a numbered list. Each criterion is a
+      concrete, observable check in Given/When/Then form or "Done when ..."
+      form, mapped to the functional requirements. Include at least one
+      criterion for error/edge behavior. 5-10 criteria.
+
+  - id: out_of_scope
+    title: Out of Scope
+    instruction: >
+      Write a short "Out of Scope" section: 3-6 bullets explicitly excluding
+      things a coding agent might otherwise gold-plate (extra platforms, auth
+      systems, scaling work, admin UIs, etc.) based on the stated stakes and
+      idea. One line each, no explanations.

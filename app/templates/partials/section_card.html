@@ -1,0 +1,55 @@
+{% if sec.status in ('pending', 'generating') %}
+{# Waiting: refreshes itself via SSE pokes + 10s polling fallback #}
+<div id="section-{{ sec.id }}"
+     hx-get="/sessions/{{ s.id }}/sections/{{ sec.id }}"
+     hx-trigger="sse:section_started, sse:section_done, sse:section_error, every 10s"
+     hx-swap="outerHTML">
+  <article>
+    <header><h3>{{ sec.title }}</h3></header>
+    {% if sec.status == 'generating' %}
+    <p><span class="spinner"></span> Drafting…</p>
+    {% else %}
+    <p><small>Queued…</small></p>
+    {% endif %}
+  </article>
+</div>
+{% elif sec.status == 'error' %}
+<div id="section-{{ sec.id }}">
+  <article>
+    <header><h3>{{ sec.title }}</h3></header>
+    <p class="error">{{ sec.content }}</p>
+    <form hx-post="/sessions/{{ s.id }}/sections/{{ sec.id }}/retry"
+          hx-target="#section-{{ sec.id }}" hx-swap="outerHTML">
+      <button type="submit">Retry this section</button>
+    </form>
+  </article>
+</div>
+{% else %}
+{# Done: click the text (or Edit) to edit by hand; refine to have the model redo it #}
+<div id="section-{{ sec.id }}">
+  <article>
+    <header><h3>{{ sec.title }}</h3></header>
+    <div class="section-content" style="cursor:pointer" title="Click to edit"
+         hx-get="/sessions/{{ s.id }}/sections/{{ sec.id }}/edit"
+         hx-target="#section-{{ sec.id }}" hx-swap="outerHTML">{{ sec.content }}</div>
+    <div class="refine-examples" style="margin-top:.4rem">
+      <a href="#" class="ex-chip"
+         hx-get="/sessions/{{ s.id }}/sections/{{ sec.id }}/edit"
+         hx-target="#section-{{ sec.id }}" hx-swap="outerHTML">✎ Edit text</a>
+    </div>
+    <form hx-post="/sessions/{{ s.id }}/sections/{{ sec.id }}/refine"
+          hx-target="#section-{{ sec.id }}" hx-swap="outerHTML" style="margin-top:.5rem">
+      <div class="refine-row">
+        <input type="text" name="instruction" required
+               placeholder="How should I refine this? e.g. expand on security, identify risks">
+        <button type="submit" class="secondary">Refine</button>
+      </div>
+      <div class="refine-examples">
+        {% for ex in examples %}<a href="#" class="ex-chip"
+          onclick="this.closest('form').querySelector('input[name=instruction]').value=this.dataset.ex;this.closest('form').querySelector('input[name=instruction]').focus();return false;"
+          data-ex="{{ ex }}">{{ ex }}</a>{% endfor %}
+      </div>
+    </form>
+  </article>
+</div>
+{% endif %}

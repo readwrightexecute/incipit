@@ -1,0 +1,318 @@
+diff --git a/examples/diffusion/diffusion-cli.cpp b/examples/diffusion/diffusion-cli.cpp
+index 3d206357..bb238a33 100644
+--- a/examples/diffusion/diffusion-cli.cpp
++++ b/examples/diffusion/diffusion-cli.cpp
+@@ -354,26 +354,29 @@ int main(int argc, char ** argv) {
+             }
+         }
+ 
+-        // device-resident SC: auto (default) and on enable it on a single device; sc_dev is single-device
+-        // like the prompt-KV store, so auto-disable on multi-GPU. SC inputs are bit-identical to host SC.
++        // device-resident SC: auto enables it on a single device; explicit on also enables it on a
++        // multi-GPU layer split (sc_dev/sc_embT live on the output layer's device). SC inputs are
++        // bit-identical to host SC.
+         if (params.diffusion.eb_gpu_sampling == 2) {  // off
+             eb_params.gpu_sampling = false;
+         } else {  // auto (default) or on
+-            eb_params.gpu_sampling = (gpu_devs <= 1);
+-            if (gpu_devs > 1) {
+-                LOG_INF("diffusion_eb: gpu sampling off (%d GPUs; sc_dev is single-device)\n", gpu_devs);
++            eb_params.gpu_sampling = (gpu_devs <= 1) || params.diffusion.eb_gpu_sampling == 1;
++            if (gpu_devs > 1 && !eb_params.gpu_sampling) {
++                LOG_INF("diffusion_eb: gpu sampling auto-off (%d GPUs; pass --diffusion-gpu-sampling on to force)\n", gpu_devs);
+             }
+         }
+ 
+-        // Stage-1 device sample reduction: auto (default) = on for single-GPU; needs gpu_sampling/sc_dev.
++        // Stage-1 device sample reduction: auto (default) = on for single-GPU; explicit on also enables
++        // it multi-GPU (the kernel runs on the device owning the logits buffer). Needs gpu_sampling/sc_dev.
+         if (params.diffusion.eb_gpu_sample_reduce == 2) {  // off
+             eb_params.gpu_sample_reduce = false;
+         } else {  // auto or on
+-            eb_params.gpu_sample_reduce = eb_params.gpu_sampling && (gpu_devs == 1);
++            eb_params.gpu_sample_reduce = eb_params.gpu_sampling &&
++                                          (gpu_devs == 1 || params.diffusion.eb_gpu_sample_reduce == 1);
+             if (!eb_params.gpu_sampling) {
+                 LOG_INF("diffusion_eb: gpu sample reduce off (needs --diffusion-gpu-sampling on / sc_dev)\n");
+-            } else if (gpu_devs != 1) {
+-                LOG_INF("diffusion_eb: gpu sample reduce off (%d GPUs; needs a single CUDA device)\n", gpu_devs);
++            } else if (!eb_params.gpu_sample_reduce && gpu_devs != 1) {
++                LOG_INF("diffusion_eb: gpu sample reduce auto-off (%d GPUs; pass --diffusion-gpu-sample-reduce on to force)\n", gpu_devs);
+             }
+         }
+ 
+diff --git a/examples/diffusion/diffusion.cpp b/examples/diffusion/diffusion.cpp
+index b7e4dde1..ad2124cf 100644
+--- a/examples/diffusion/diffusion.cpp
++++ b/examples/diffusion/diffusion.cpp
+@@ -501,7 +501,9 @@ void diffusion_generate_entropy_bound(llama_context *             ctx,
+             batch.pos[i]       = i;
+             batch.n_seq_id[i]  = 1;
+             batch.seq_id[i][0] = 0;
+-            batch.logits[i]    = 1;  // encode() forces all rows to output anyway; set them so it stays quiet
++            // only the last row outputs: PREFILL exists for its KV-store writes, and requesting logits
++            // for every prompt row materializes an [n_vocab, P] buffer (gigabytes at long P)
++            batch.logits[i]    = (i == n_input - 1) ? 1 : 0;
+         }
+         if (llama_decode(ctx, batch) != 0) {
+             LOG_ERR("%s: PREFILL decode failed\n", __func__);
+diff --git a/ggml/src/ggml-cuda/diffusion-sampling.cu b/ggml/src/ggml-cuda/diffusion-sampling.cu
+index 2347002d..b1f859e3 100644
+--- a/ggml/src/ggml-cuda/diffusion-sampling.cu
++++ b/ggml/src/ggml-cuda/diffusion-sampling.cu
+@@ -121,17 +121,27 @@ struct dg_devsample_scratch {
+ static std::mutex g_dg_devsample_mutex;
+ static std::map<int, dg_devsample_scratch> g_dg_devsample;
+ 
+-static void dg_devsample_reserve(dg_devsample_scratch & s, int n) {
+-    if (s.cap >= n) { return; }
+-    if (s.u)       { CUDA_CHECK(cudaFree(s.u)); }
+-    if (s.argmax)  { CUDA_CHECK(cudaFree(s.argmax)); }
+-    if (s.entropy) { CUDA_CHECK(cudaFree(s.entropy)); }
+-    if (s.sampled) { CUDA_CHECK(cudaFree(s.sampled)); }
+-    CUDA_CHECK(cudaMalloc((void **) &s.u,       (size_t) n * sizeof(float)));
+-    CUDA_CHECK(cudaMalloc((void **) &s.argmax,  (size_t) n * sizeof(int)));
+-    CUDA_CHECK(cudaMalloc((void **) &s.entropy, (size_t) n * sizeof(float)));
+-    CUDA_CHECK(cudaMalloc((void **) &s.sampled, (size_t) n * sizeof(int)));
++static bool dg_devsample_reserve(dg_devsample_scratch & s, int n) {
++    if (s.cap >= n) { return true; }
++    if (s.u)       { CUDA_CHECK(cudaFree(s.u));       s.u       = nullptr; }
++    if (s.argmax)  { CUDA_CHECK(cudaFree(s.argmax));  s.argmax  = nullptr; }
++    if (s.entropy) { CUDA_CHECK(cudaFree(s.entropy)); s.entropy = nullptr; }
++    if (s.sampled) { CUDA_CHECK(cudaFree(s.sampled)); s.sampled = nullptr; }
++    s.cap = 0;
++    // soft-fail on VRAM pressure: the caller falls back to the host sampling path
++    if (cudaMalloc((void **) &s.u,       (size_t) n * sizeof(float)) != cudaSuccess ||
++        cudaMalloc((void **) &s.argmax,  (size_t) n * sizeof(int))   != cudaSuccess ||
++        cudaMalloc((void **) &s.entropy, (size_t) n * sizeof(float)) != cudaSuccess ||
++        cudaMalloc((void **) &s.sampled, (size_t) n * sizeof(int))   != cudaSuccess) {
++        (void) cudaGetLastError();
++        if (s.u)       { cudaFree(s.u);       s.u       = nullptr; }
++        if (s.argmax)  { cudaFree(s.argmax);  s.argmax  = nullptr; }
++        if (s.entropy) { cudaFree(s.entropy); s.entropy = nullptr; }
++        if (s.sampled) { cudaFree(s.sampled); s.sampled = nullptr; }
++        return false;
++    }
+     s.cap = n;
++    return true;
+ }
+ 
+ bool ggml_cuda_diffusion_sample(
+@@ -157,14 +167,26 @@ bool ggml_cuda_diffusion_sample(
+     }
+     const float * logits_d = (const float *) logits->data;
+ 
+-    // gated to a single CUDA device, so the tensor is on the current device; run there on the default
+-    // stream (the caller has already synchronized the backend).
+-    int device = 0;
+-    CUDA_CHECK(cudaGetDevice(&device));
++    // resolve the device that owns the logits buffer (on a multi-GPU layer split this is the output
++    // layer's device, not necessarily the current one) and run there on the default stream (the caller
++    // has already synchronized the backend).
++    cudaPointerAttributes attrs{};
++    if (cudaPointerGetAttributes(&attrs, logits->data) != cudaSuccess ||
++        attrs.type != cudaMemoryTypeDevice) {
++        (void) cudaGetLastError();  // clear any sticky error
++        return false;               // not a plain device pointer -> host fallback
++    }
++    const int device = attrs.device;
++    int prev_device = 0;
++    CUDA_CHECK(cudaGetDevice(&prev_device));
++    if (prev_device != device) { CUDA_CHECK(cudaSetDevice(device)); }
+ 
+     std::lock_guard<std::mutex> lock(g_dg_devsample_mutex);
+     dg_devsample_scratch & s = g_dg_devsample[device];
+-    dg_devsample_reserve(s, n_tokens);
++    if (!dg_devsample_reserve(s, n_tokens)) {
++        if (prev_device != device) { CUDA_CHECK(cudaSetDevice(prev_device)); }
++        return false;
++    }
+ 
+     CUDA_CHECK(cudaMemcpyAsync(s.u, u_host, (size_t) n_tokens * sizeof(float), cudaMemcpyHostToDevice, 0));
+     diffusion_dense_sample_kernel<<<n_tokens, 256, 0, 0>>>(
+@@ -174,5 +196,6 @@ bool ggml_cuda_diffusion_sample(
+     CUDA_CHECK(cudaMemcpyAsync(entropy_host, s.entropy, (size_t) n_tokens * sizeof(float), cudaMemcpyDeviceToHost, 0));
+     CUDA_CHECK(cudaMemcpyAsync(sampled_host, s.sampled, (size_t) n_tokens * sizeof(int),   cudaMemcpyDeviceToHost, 0));
+     CUDA_CHECK(cudaStreamSynchronize(0));
++    if (prev_device != device) { CUDA_CHECK(cudaSetDevice(prev_device)); }
+     return true;
+ }
+diff --git a/src/models/diffusion-gemma.cpp b/src/models/diffusion-gemma.cpp
+index 46c61094..ed7ebf89 100644
+--- a/src/models/diffusion-gemma.cpp
++++ b/src/models/diffusion-gemma.cpp
+@@ -3,6 +3,7 @@
+ 
+ #include <algorithm>
+ #include <cstring>
++#include <map>
+ #include <thread>
+ #include <vector>
+ 
+@@ -590,14 +591,34 @@ bool llama_diffusion_device_sample(const struct llama_model * model, const float
+ }
+ 
+ llama_model_diffusion_gemma::~llama_model_diffusion_gemma() {
+-    if (pkv_buf) { ggml_backend_buffer_free(pkv_buf); pkv_buf = nullptr; }
+-    if (pkv_ctx) { ggml_free(pkv_ctx); pkv_ctx = nullptr; }
++    for (auto * buf : pkv_bufs) { ggml_backend_buffer_free(buf); }
++    for (auto * ctx : pkv_ctxs) { ggml_free(ctx); }
++    pkv_bufs.clear();
++    pkv_ctxs.clear();
+     if (sc_embT_buf) { ggml_backend_buffer_free(sc_embT_buf); sc_embT_buf = nullptr; }
+     if (sc_embT_ctx) { ggml_free(sc_embT_ctx); sc_embT_ctx = nullptr; }
+     if (sc_dev_buf)  { ggml_backend_buffer_free(sc_dev_buf);  sc_dev_buf  = nullptr; }
+     if (sc_dev_ctx)  { ggml_free(sc_dev_ctx);  sc_dev_ctx  = nullptr; }
+ }
+ 
++// Allocate a context's tensors trying: last layer's device -> layer-0's device -> host. The scheduler
++// handles whichever placement wins; only the cross-device copy cost differs. Returns nullptr only if
++// even the host allocation fails.
++static ggml_backend_buffer_t dg_alloc_with_fallback(const llama_model_diffusion_gemma & m,
++                                                    ggml_context * ctx, const char * what) {
++    const int last = (int) m.hparams.n_layer() - 1;
++    ggml_backend_dev_t cands[2] = { m.dev_layer(last), m.dev_layer(0) };
++    for (ggml_backend_dev_t dev : cands) {
++        if (!dev) { continue; }
++        ggml_backend_buffer_t buf =
++            ggml_backend_alloc_ctx_tensors_from_buft(ctx, ggml_backend_dev_buffer_type(dev));
++        if (buf) { return buf; }
++        LLAMA_LOG_WARN("%s: %s does not fit on %s, trying fallback\n", __func__, what,
++                       ggml_backend_dev_name(dev));
++    }
++    return ggml_backend_alloc_ctx_tensors_from_buft(ctx, ggml_backend_cpu_buffer_type());
++}
++
+ // Build the SC soft-embedding weight once: tok_embd dequantized + transposed to [n_vocab, n_embd] F16
+ // in a device weights buffer, so the per-step SC matmul runs on-device instead of on the CPU.
+ static void dg_ensure_sc_embT(const llama_model_diffusion_gemma & m) {
+@@ -615,9 +636,9 @@ static void dg_ensure_sc_embT(const llama_model_diffusion_gemma & m) {
+     m.sc_embT = ggml_new_tensor_2d(m.sc_embT_ctx, GGML_TYPE_F16, n_vocab, n_embd);
+     ggml_set_name(m.sc_embT, "sc_embT");
+ 
+-    ggml_backend_dev_t dev = m.dev_layer(0);
+-    ggml_backend_buffer_type_t buft = dev ? ggml_backend_dev_buffer_type(dev) : ggml_backend_cpu_buffer_type();
+-    m.sc_embT_buf = ggml_backend_alloc_ctx_tensors_from_buft(m.sc_embT_ctx, buft);
++    // preferred: last layer's device (lm_head writes canvas logits there, so the SC chain reading
++    // sc_dev stays local); falls back to layer-0's device, then host, under VRAM pressure
++    m.sc_embT_buf = dg_alloc_with_fallback(m, m.sc_embT_ctx, "sc_embT");
+     GGML_ASSERT(m.sc_embT_buf != nullptr);
+     ggml_backend_buffer_set_usage(m.sc_embT_buf, GGML_BACKEND_BUFFER_USAGE_WEIGHTS);
+ 
+@@ -678,52 +699,62 @@ static void dg_ensure_sc_dev(const llama_model_diffusion_gemma & m, int64_t C) {
+     m.sc_dev = ggml_new_tensor_2d(m.sc_dev_ctx, GGML_TYPE_F32, n_vocab, C);
+     ggml_set_name(m.sc_dev, "sc_dev");
+ 
+-    ggml_backend_dev_t dev = m.dev_layer(0);
+-    ggml_backend_buffer_type_t buft = dev ? ggml_backend_dev_buffer_type(dev)
+-                                          : ggml_backend_cpu_buffer_type();
+-    m.sc_dev_buf = ggml_backend_alloc_ctx_tensors_from_buft(m.sc_dev_ctx, buft);
++    // co-located with sc_embT on the last layer's device when it fits (see dg_ensure_sc_embT)
++    m.sc_dev_buf = dg_alloc_with_fallback(m, m.sc_dev_ctx, "sc_dev");
+     GGML_ASSERT(m.sc_dev_buf != nullptr);
+     ggml_backend_buffer_clear(m.sc_dev_buf, 0);  // step-0 safety (see above)
+     m.sc_dev_C = C;
+ }
+ 
+ // Lazily (re)allocate the device-resident F32 prompt-KV store (per-layer K,V, grow-only) for a prompt
+-// of length P, on layer-0's buffer type (single-GPU; cross-device would need a per-buft context map).
++// of length P. Each layer's K,V are allocated on that layer's device (per-buft context map) so a model
++// split across GPUs keeps PREFILL writes and DECODE reads device-local.
+ static void dg_ensure_pkv_store(const llama_model_diffusion_gemma & m, int64_t P) {
+-    if (m.pkv_buf != nullptr && m.pkv_cap >= P) {
++    if (!m.pkv_bufs.empty() && m.pkv_cap >= P) {
+         return;
+     }
+-    if (m.pkv_buf) { ggml_backend_buffer_free(m.pkv_buf); m.pkv_buf = nullptr; }
+-    if (m.pkv_ctx) { ggml_free(m.pkv_ctx); m.pkv_ctx = nullptr; }
++    for (auto * buf : m.pkv_bufs) { ggml_backend_buffer_free(buf); }
++    for (auto * ctx : m.pkv_ctxs) { ggml_free(ctx); }
++    m.pkv_bufs.clear();
++    m.pkv_ctxs.clear();
+     m.pkv_k.clear();
+     m.pkv_v.clear();
+ 
+     const int     n_layer = (int) m.hparams.n_layer();
+     const int64_t cap     = P;
+ 
+-    ggml_init_params ip = {
+-        /*.mem_size   =*/ ggml_tensor_overhead() * (size_t) (2 * n_layer + 4),
+-        /*.mem_buffer =*/ nullptr,
+-        /*.no_alloc   =*/ true,
+-    };
+-    m.pkv_ctx = ggml_init(ip);
+-    GGML_ASSERT(m.pkv_ctx != nullptr);
++    // group layers by their device's buffer type
++    std::map<ggml_backend_buffer_type_t, std::vector<int>> buft_layers;
++    for (int il = 0; il < n_layer; ++il) {
++        ggml_backend_dev_t dev = m.dev_layer(il);
++        ggml_backend_buffer_type_t buft = dev ? ggml_backend_dev_buffer_type(dev)
++                                              : ggml_backend_cpu_buffer_type();
++        buft_layers[buft].push_back(il);
++    }
++
+     m.pkv_k.resize(n_layer);
+     m.pkv_v.resize(n_layer);
+-    for (int il = 0; il < n_layer; ++il) {
+-        const int64_t hd  = m.hparams.n_embd_head_k(il);
+-        const int64_t nkv = m.hparams.n_head_kv(il);
+-        m.pkv_k[il] = ggml_new_tensor_3d(m.pkv_ctx, GGML_TYPE_F32, hd, nkv, cap);
+-        m.pkv_v[il] = ggml_new_tensor_3d(m.pkv_ctx, GGML_TYPE_F32, hd, nkv, cap);
+-        ggml_format_name(m.pkv_k[il], "pkv_k_l%d", il);
+-        ggml_format_name(m.pkv_v[il], "pkv_v_l%d", il);
+-    }
+-
+-    ggml_backend_dev_t dev = m.dev_layer(0);
+-    ggml_backend_buffer_type_t buft = dev ? ggml_backend_dev_buffer_type(dev)
+-                                          : ggml_backend_cpu_buffer_type();
+-    m.pkv_buf = ggml_backend_alloc_ctx_tensors_from_buft(m.pkv_ctx, buft);
+-    GGML_ASSERT(m.pkv_buf != nullptr);
++    for (const auto & [buft, layers] : buft_layers) {
++        ggml_init_params ip = {
++            /*.mem_size   =*/ ggml_tensor_overhead() * (size_t) (2 * layers.size() + 4),
++            /*.mem_buffer =*/ nullptr,
++            /*.no_alloc   =*/ true,
++        };
++        ggml_context * ctx = ggml_init(ip);
++        GGML_ASSERT(ctx != nullptr);
++        m.pkv_ctxs.push_back(ctx);
++        for (int il : layers) {
++            const int64_t hd  = m.hparams.n_embd_head_k(il);
++            const int64_t nkv = m.hparams.n_head_kv(il);
++            m.pkv_k[il] = ggml_new_tensor_3d(ctx, GGML_TYPE_F32, hd, nkv, cap);
++            m.pkv_v[il] = ggml_new_tensor_3d(ctx, GGML_TYPE_F32, hd, nkv, cap);
++            ggml_format_name(m.pkv_k[il], "pkv_k_l%d", il);
++            ggml_format_name(m.pkv_v[il], "pkv_v_l%d", il);
++        }
++        ggml_backend_buffer_t buf = ggml_backend_alloc_ctx_tensors_from_buft(ctx, buft);
++        GGML_ASSERT(buf != nullptr);
++        m.pkv_bufs.push_back(buf);
++    }
+     m.pkv_cap = cap;
+ }
+ 
+diff --git a/src/models/models.h b/src/models/models.h
+index 7f032826..adaa6cc5 100644
+--- a/src/models/models.h
++++ b/src/models/models.h
+@@ -858,15 +858,17 @@ struct llama_model_diffusion_gemma : public llama_model_base {
+     //   PKV_UNIFIED : no-cache forward over [prompt|canvas] (default + safety fallback).
+     //   PKV_PREFILL : forward the prompt only; write per-layer K,V into the store.
+     //   PKV_DECODE  : forward the canvas only; read the cached prompt K,V.
+-    // Store is device-resident F32 (in pkv_buf/pkv_ctx), allocated lazily by llama_diffusion_set_phase().
++    // Store is device-resident F32 (in pkv_bufs/pkv_ctxs), allocated lazily by llama_diffusion_set_phase().
+     enum pkv_phase_t { PKV_UNIFIED = 0, PKV_PREFILL = 1, PKV_DECODE = 2 };
+     mutable pkv_phase_t pkv_phase = PKV_UNIFIED;
+     mutable int64_t     pkv_P     = 0;   // prompt length of the current block
+     mutable int64_t     pkv_cap   = 0;   // allocated capacity (max P) of the store
+     mutable std::vector<ggml_tensor *> pkv_k;   // per layer [n_embd_head_k(il), n_head_kv(il), pkv_cap]
+     mutable std::vector<ggml_tensor *> pkv_v;
+-    mutable ggml_context        * pkv_ctx = nullptr;
+-    mutable ggml_backend_buffer_t pkv_buf = nullptr;
++    // one context+buffer per distinct layer buft (multi-GPU layer split: each layer's K,V live on
++    // that layer's device so PREFILL writes and DECODE reads stay device-local)
++    mutable std::vector<ggml_context *>        pkv_ctxs;
++    mutable std::vector<ggml_backend_buffer_t> pkv_bufs;
+ 
+     ~llama_model_diffusion_gemma() override;
+ 

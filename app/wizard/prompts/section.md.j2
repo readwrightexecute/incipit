@@ -1,0 +1,26 @@
+PROJECT CONTEXT
+===============
+IDEA:
+{{ idea }}
+
+STAKES: {{ stakes }} ({{ stakes_hint }})
+FORM FACTOR: {{ form_factor }}
+
+CLARIFICATIONS (question → answer):
+{% for qa in qas %}
+- {{ qa.question }}
+  → {{ qa.answer }}
+{% endfor %}
+{% if prior_sections %}
+SECTIONS ALREADY DRAFTED (for consistency — do not repeat their content):
+{% for s in prior_sections %}
+## {{ s.title }}
+{{ s.content }}
+{% endfor %}
+{% endif %}
+
+TASK
+====
+{{ instruction }}
+
+Output ONLY the section body (no heading — the heading "{{ title }}" is added separately).

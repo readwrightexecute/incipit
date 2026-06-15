@@ -1,0 +1,25 @@
+<article id="party-panel">
+  <header>
+    <strong>🎉 Party mode</strong> — BMAD round table
+  </header>
+  <p class="assumption">
+    The round table convenes
+    {% for p in personas %}{{ p.emoji }} {{ p.name }}{{ ", " if not loop.last }}{% endfor %}
+    with {{ facilitator.emoji }} {{ facilitator.name }} facilitating. Each reviewer
+    speaks in turn (seeing what others said), the facilitator passes the mic back to
+    settle disagreements, and once they reach consensus you'll approve or deny the
+    agreed changes. This runs several model calls — it can take a minute.
+  </p>
+
+  <div id="party-turn" class="party-turn" sse-swap="party_turn"></div>
+
+  {# Live bubbles append via sse-swap; initial/resume messages render here server-side. #}
+  <div id="party-chat" class="chat" sse-swap="party_msg" hx-swap="beforeend">
+    {% include "partials/party_chat.html" %}
+  </div>
+
+  <div id="party-changes"
+       hx-get="/sessions/{{ s.id }}/party/changes"
+       hx-trigger="load, every 4s"
+       hx-swap="innerHTML"></div>
+</article>

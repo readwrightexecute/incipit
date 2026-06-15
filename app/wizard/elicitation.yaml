@@ -1,0 +1,32 @@
+# BMAD-style refinement menu shown under each drafted section.
+methods:
+  - id: critique_refine
+    label: Critique & Refine
+    instruction: >
+      Act as a harsh reviewer of the section below. Identify weaknesses,
+      vagueness, and missed implications, then rewrite the section fixing them.
+      Output ONLY the revised section, same format as the original.
+
+  - id: identify_risks
+    label: Identify Risks
+    instruction: >
+      Identify the biggest risks and unstated assumptions lurking in the section
+      below, then rewrite the section so those risks are addressed or made
+      explicit (as constraints, requirements, or "[RISK]" notes). Output ONLY
+      the revised section, same format as the original.
+
+  - id: expand
+    label: Expand
+    instruction: >
+      The section below is too thin. Expand it with the next most valuable
+      items/details that are implied by the project context but missing. Keep
+      the same format and numbering scheme; do not pad with fluff. Output ONLY
+      the revised section.
+
+  - id: simplify
+    label: Simplify
+    instruction: >
+      The section below is overbuilt for the stated stakes. Cut it to the
+      essential minimum a coding agent needs — merge overlapping items, drop
+      gold-plating, tighten wording. Keep the same format and numbering scheme.
+      Output ONLY the revised section.
