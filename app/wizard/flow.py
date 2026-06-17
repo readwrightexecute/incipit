@@ -400,8 +400,8 @@ def _resolve_section(raw_id: str, sections: list[Section]) -> str | None:
 
 
 def _parse_changes(s: Session, raw: str) -> list[PartyChange]:
-    if "NO CHANGES" in raw.upper():
-        return []
+    # Don't short-circuit on a substring "NO CHANGES" — parse the blocks (a bare
+    # "NO CHANGES" yields zero blocks anyway). Mirrors _parse_qa_changes.
     changes: list[PartyChange] = []
     for i, block in enumerate(re.split(r"^\s*-{3,}\s*$", raw, flags=re.M)):
         sec_id = change = None
@@ -534,9 +534,13 @@ def _qa_subject(s: Session) -> str:
 
 
 def _parse_qa_changes(s: Session, raw: str) -> list[PartyQAChange]:
-    """Parse the QA-synthesis output into add_question / suggest_answer items."""
-    if "NO CHANGES" in raw.upper():
-        return []
+    """Parse the QA-synthesis output into add_question / suggest_answer items.
+
+    Don't short-circuit on a substring "NO CHANGES": the model routinely emits
+    real blocks alongside prose like "no changes to Q3-7", which would wrongly
+    discard the whole batch (the contradiction where the facilitator announces
+    consensus but the panel shows "nothing to add"). A bare "NO CHANGES" simply
+    parses to zero blocks anyway."""
     changes: list[PartyQAChange] = []
     n_qas = len(s.qas)
     for i, block in enumerate(re.split(r"^\s*-{3,}\s*$", raw, flags=re.M)):
