@@ -7,8 +7,8 @@
     {% if not drafting %}
       {% if s.qa_review_status == 'ready' and s.qa_review %}
       <button class="secondary" hx-post="/sessions/{{ s.id }}/qa-fix"
-              hx-target="#qa-fix-region" hx-swap="innerHTML"
-              title="Revise the flagged sections to resolve the QA findings"
+              hx-target="#qa-review-region" hx-swap="innerHTML"
+              title="Fix every flagged finding — each card resolves in turn"
               {% if s.qa_fix_status == 'running' %}disabled{% endif %}>
         🛠 Implement fixes
       </button>

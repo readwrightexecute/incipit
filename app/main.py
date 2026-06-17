@@ -492,8 +492,13 @@ async def qa_fix_start(request: Request, sid: str):
         return _render("expired.html", request)
     if s.qa_fix_status != "running":
         s.qa_fix_status = "running"  # set synchronously so the partial shows progress
+        for f in s.qa_review:        # flip each unresolved finding to the fixing state
+            if f.get("fix_status") != "done":
+                f["fix_status"] = "running"
         asyncio.create_task(flow.run_qa_fix(s))
-    return _render("partials/qa_fix.html", request, s=s)
+    # Re-render the whole review so every finding card picks up its fixing
+    # animation (each self-refreshes to a green FIXED box as it completes).
+    return _render("partials/qa_review.html", request, s=s)
 
 
 @app.get("/sessions/{sid}/qa-fix", response_class=HTMLResponse)
