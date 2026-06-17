@@ -456,7 +456,8 @@ async def qa_panel(request: Request, sid: str):
     drafting = any(sec.status != "done" for sec in s.sections)
     if s.sections and not drafting and s.qa_review_status == "idle":
         s.qa_review_status = "running"
-        s.qa_review = []
+        # Leave s.qa_review intact — run_qa_review reads it as "prior findings"
+        # then clears it; the running partial only shows a spinner anyway.
         asyncio.create_task(flow.run_qa_review(s))
     return _render("partials/qa_panel.html", request, s=s, lint=flow.lint_spec(s))
 
@@ -471,7 +472,8 @@ async def qa_review_start(request: Request, sid: str):
         # spinner + self-refresh attrs; otherwise the background task hasn't set
         # the status yet and the panel comes back blank and inert.
         s.qa_review_status = "running"
-        s.qa_review = []
+        # Keep s.qa_review so run_qa_review can feed it back as prior findings
+        # (it clears it). The running partial renders only the spinner.
         s.qa_fix_status = "idle"  # a fresh review supersedes any prior fix panel
         asyncio.create_task(flow.run_qa_review(s))
     return _render("partials/qa_review.html", request, s=s)

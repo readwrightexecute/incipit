@@ -813,12 +813,16 @@ def _parse_qa_review(raw: str) -> list[dict]:
 
 
 async def run_qa_review(s: Session) -> None:
-    """On-demand LLM critique of the assembled spec."""
+    """On-demand LLM critique of the assembled spec. On a re-run the previous
+    findings are fed back, so the reviewer only re-flags what's still genuinely
+    unresolved instead of re-raising addressed items (helps it converge)."""
     try:
+        prior = list(s.qa_review)  # last run's findings (empty on the first pass)
         s.qa_review_status = "running"
         s.qa_review = []
         await _emit(s, "qa_review_started")
-        prompt = _jinja.get_template("qa_review.md.j2").render(spec=assemble_final(s))
+        prompt = _jinja.get_template("qa_review.md.j2").render(
+            spec=assemble_final(s), prior=prior)
         raw = await _generate(s, prompt, max_tokens=900, label="Running QA review")
         s.qa_review = _parse_qa_review(raw)
         s.qa_review_status = "ready"
