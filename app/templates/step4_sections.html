@@ -27,6 +27,6 @@
   {# Fixed bottom bar; buttons appear/disappear as drafting completes. #}
   <div id="step3-actions"
        hx-get="/sessions/{{ s.id }}/step3-actions"
-       hx-trigger="load, sse:job_done"
+       hx-trigger="load, sse:job_done, sse:qa_review_ready, sse:qa_fix_ready"
        hx-swap="innerHTML"></div>
 </div>

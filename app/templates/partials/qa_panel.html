@@ -13,15 +13,7 @@
     {% endfor %}
   </div>
   {% endif %}
-  <p style="margin:.6rem 0 0">
-    <button class="secondary" hx-post="/sessions/{{ s.id }}/qa-review"
-            hx-target="#qa-review-region" hx-swap="innerHTML"
-            {% if s.qa_review_status == 'running' %}disabled{% endif %}
-            title="Have the model critique the assembled spec for ambiguity, testability, gaps and contradictions">
-      {% if s.qa_review_status in ('ready', 'error') %}Re-run QA review{% else %}Run deeper QA review (LLM){% endif %}
-    </button>
-  </p>
-  <div id="qa-review-region">
+  <div id="qa-review-region"
     {% if s.qa_review_status != 'idle' %}{% include "partials/qa_review.html" %}{% endif %}
   </div>
   {% endif %}

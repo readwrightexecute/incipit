@@ -472,6 +472,7 @@ async def qa_review_start(request: Request, sid: str):
         # the status yet and the panel comes back blank and inert.
         s.qa_review_status = "running"
         s.qa_review = []
+        s.qa_fix_status = "idle"  # a fresh review supersedes any prior fix panel
         asyncio.create_task(flow.run_qa_review(s))
     return _render("partials/qa_review.html", request, s=s)
 

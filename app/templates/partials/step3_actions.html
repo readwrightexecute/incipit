@@ -1,14 +1,36 @@
 {% set drafting = s.sections | rejectattr('status', 'equalto', 'done') | list %}
-<div class="action-bar">
-  <a href="/sessions/{{ s.id }}/back/clarify" role="button" class="secondary outline bar-back">← Back</a>
-  {% if not drafting %}
-  <a href="#qa-section" role="button" class="secondary">Review QA ↓</a>
-  <button class="contrast" hx-post="/sessions/{{ s.id }}/party"
-          hx-target="#party-region" hx-swap="innerHTML"
-          title="Convene the BMAD round table to review and refine these sections"
-          {% if s.party_status == 'running' %}disabled{% endif %}>
-    🎉 Party review
-  </button>
-  <a href="/sessions/{{ s.id }}/final" role="button">Finish →</a>
-  {% endif %}
+<div class="action-bar bar-3">
+  <div class="bar-left">
+    <a href="/sessions/{{ s.id }}/back/clarify" role="button" class="secondary outline">← Back</a>
+  </div>
+  <div class="bar-center">
+    {% if not drafting %}
+      {% if s.qa_review_status == 'ready' and s.qa_review %}
+      <button class="secondary" hx-post="/sessions/{{ s.id }}/qa-fix"
+              hx-target="#qa-fix-region" hx-swap="innerHTML"
+              title="Revise the flagged sections to resolve the QA findings"
+              {% if s.qa_fix_status == 'running' %}disabled{% endif %}>
+        🛠 Implement fixes
+      </button>
+      <button class="secondary" hx-post="/sessions/{{ s.id }}/qa-review"
+              hx-target="#qa-review-region" hx-swap="innerHTML">Re-run QA</button>
+      {% elif s.qa_review_status == 'ready' %}
+      <button class="secondary" hx-post="/sessions/{{ s.id }}/qa-review"
+              hx-target="#qa-review-region" hx-swap="innerHTML">Re-run QA</button>
+      {% else %}
+      <a href="#qa-section" role="button" class="secondary">Review QA ↓</a>
+      {% endif %}
+    {% endif %}
+  </div>
+  <div class="bar-right">
+    {% if not drafting %}
+    <button class="contrast" hx-post="/sessions/{{ s.id }}/party"
+            hx-target="#party-region" hx-swap="innerHTML"
+            title="Convene the BMAD round table to review and refine these sections"
+            {% if s.party_status == 'running' %}disabled{% endif %}>
+      🎉 Party review
+    </button>
+    <a href="/sessions/{{ s.id }}/final" role="button">Finish →</a>
+    {% endif %}
+  </div>
 </div>

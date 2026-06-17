@@ -137,6 +137,15 @@
       border-top: 1px solid var(--pico-card-border-color); }
     .action-bar button, .action-bar a[role="button"] { margin-bottom: 0; width: auto; }
     .action-bar .bar-back { margin-right: auto; } /* Back pinned far-left; forward action stays rightmost */
+    /* 3-zone variant: Back left, QA actions centered, party/finish right */
+    .action-bar.bar-3 { justify-content: space-between; flex-wrap: nowrap; }
+    .action-bar.bar-3 > .bar-left, .action-bar.bar-3 > .bar-right { flex: 1 1 0; display: flex; gap: .5rem; align-items: center; min-width: 0; }
+    .action-bar.bar-3 > .bar-right { justify-content: flex-end; }
+    .action-bar.bar-3 > .bar-center { display: flex; gap: .5rem; align-items: center; }
+    @media (max-width: 700px) {
+      .action-bar.bar-3 { flex-wrap: wrap; }
+      .action-bar.bar-3 > .bar-left, .action-bar.bar-3 > .bar-center, .action-bar.bar-3 > .bar-right { flex: 1 1 100%; justify-content: center; }
+    }
     .action-bar .bar-note { flex-basis: 100%; text-align: center; margin: 0 0 .1rem; }
     main.container { padding-bottom: 5.5rem; } /* clear the fixed action bar */
     .final-actions { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; }
