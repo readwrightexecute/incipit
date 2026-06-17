@@ -14,7 +14,7 @@
               hx-target="#change-{{ ch.id }}" hx-swap="outerHTML">Deny</button>
     </div>
     {% elif ch.status == 'applying' %}
-    <p><span class="spinner"></span> Applying to “{{ ch.section_title }}”…</p>
+    <p><span class="spinner" data-anim="diamonds"></span> Applying to “{{ ch.section_title }}”…</p>
     {% elif ch.status == 'applied' %}
     <p style="color:#38a169">✓ Applied to “{{ ch.section_title }}” — the mega-prompt below is updated.</p>
     {% elif ch.status == 'denied' %}

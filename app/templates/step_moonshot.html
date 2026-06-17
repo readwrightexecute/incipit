@@ -1,3 +1,4 @@
+<script id="session-meta" type="application/json">{"id": "{{ s.id }}", "idea": {{ s.idea|tojson }}, "phase": "{{ s.phase }}"}</script>
 <p class="step-label">🌙 Shoot the Moon</p>
 <div hx-ext="sse" sse-connect="/sessions/{{ s.id }}/events">
   <p><span class="spinner"></span> Running the whole thing on your idea — calibration,

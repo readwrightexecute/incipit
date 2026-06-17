@@ -1,30 +1,39 @@
 {% if s.error %}
-<div id="questions">
+<div id="questions"{% if oob %} hx-swap-oob="true"{% endif %}>
   <p class="error">Generation failed: {{ s.error }}</p>
   <p><a href="/" role="button" class="secondary">Start over</a></p>
 </div>
 {% elif s.phase == 'clarify' and s.qas %}
 {# Ready: plain div, no auto-refresh attrs — typed answers must survive #}
-<div id="questions">
+<div id="questions"{% if oob %} hx-swap-oob="true"{% endif %}>
   <form hx-post="/sessions/{{ s.id }}/answers" hx-target="#wizard" hx-swap="innerHTML">
     <p>Answer what you can — anything you skip falls back to the stated assumption.</p>
     {% for qa in s.qas %}
     <label>
       {{ loop.index }}. {{ qa.question }}
       <input type="text" name="answer_{{ loop.index0 }}"
-             placeholder="{{ qa.assumption }}">
+             value="{{ qa.answer }}" placeholder="{{ qa.assumption }}">
       <small class="assumption">[ASSUMPTION] {{ qa.assumption }}</small>
     </label>
     {% endfor %}
-    <button type="submit">Draft the spec →</button>
+    <div class="action-bar">
+      <button type="submit">Draft the spec →</button>
+      <button type="button" class="contrast"
+              hx-post="/sessions/{{ s.id }}/party-questions"
+              hx-target="#qa-party-region" hx-swap="innerHTML"
+              {% if s.party_status == 'running' %}disabled{% endif %}
+              title="Have the BMAD round table review these questions and suggest additions / answers">
+        🎉 Party: review questions
+      </button>
+    </div>
   </form>
 </div>
 {% else %}
 {# Waiting: keeps refreshing itself via SSE pokes + 10s polling fallback #}
-<div id="questions"
+<div id="questions"{% if oob %} hx-swap-oob="true"{% endif %}
      hx-get="/sessions/{{ s.id }}/questions"
      hx-trigger="sse:questions_ready, sse:error, every 10s"
      hx-swap="outerHTML">
-  <p><span class="spinner"></span> Thinking up the questions that matter…</p>
+  <p class="assumption">The questions that matter will appear here…</p>
 </div>
 {% endif %}

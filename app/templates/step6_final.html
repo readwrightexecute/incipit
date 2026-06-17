@@ -1,26 +1,50 @@
 {% extends "base.html" %}
 {% block content %}
-<p class="step-label">Step 5 of 5 — Your mega-prompt</p>
+<script id="session-meta" type="application/json">{"id": "{{ s.id }}", "idea": {{ s.idea|tojson }}, "phase": "{{ s.phase }}"}</script>
+<p class="step-label">Step 4 of 4 — Your mega-prompt</p>
 <div hx-ext="sse" sse-connect="/sessions/{{ s.id }}/events">
-  <p>
+  <div class="action-bar">
     <button id="copy-btn" onclick="copyPrompt()">Copy to clipboard</button>
     <a href="/sessions/{{ s.id }}/download.md" role="button" class="secondary">Download .md</a>
     <a href="/" role="button" class="contrast outline">New session</a>
-  </p>
+    <button class="contrast" hx-post="/sessions/{{ s.id }}/party"
+            hx-target="#party-region" hx-swap="innerHTML"
+            title="Convene the BMAD round table to review and refine the spec"
+            {% if s.party_status == 'running' %}disabled{% endif %}>
+      🎉 Party review
+    </button>
+  </div>
   <div class="section-content" id="mega-prompt"
        hx-get="/sessions/{{ s.id }}/megaprompt"
        hx-trigger="sse:mega_updated" hx-swap="innerHTML">{{ mega_prompt }}</div>
 
-  <p style="margin-top:1.2rem">
-    <button class="contrast" hx-post="/sessions/{{ s.id }}/party"
-            hx-target="#party-region" hx-swap="innerHTML"
-            {% if s.party_status == 'running' %}disabled{% endif %}>
-      🎉 Party mode — convene the BMAD round table
-    </button>
-  </p>
   <div id="party-region">
     {% if s.party_status != 'idle' %}{% include "partials/party_panel.html" %}{% endif %}
   </div>
+
+  <article id="qa-section" style="margin-top:1.4rem">
+    <header><strong>🔍 QA</strong> — automated checks on your spec</header>
+    {% if lint %}
+    <div class="qa-list">
+      {% for f in lint %}
+      <div class="qa-finding sev-{{ f.severity }}">
+        <span class="qa-sev">{{ 'OK' if f.severity == 'info' else f.severity|upper }}</span> {{ f.message }}
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+    <p style="margin:.6rem 0 0">
+      <button class="secondary" hx-post="/sessions/{{ s.id }}/qa-review"
+              hx-target="#qa-review-region" hx-swap="innerHTML"
+              {% if s.qa_review_status == 'running' %}disabled{% endif %}
+              title="Have the model critique the assembled spec for ambiguity, testability, gaps and contradictions">
+        Run deeper QA review (LLM)
+      </button>
+    </p>
+    <div id="qa-review-region">
+      {% if s.qa_review_status != 'idle' %}{% include "partials/qa_review.html" %}{% endif %}
+    </div>
+  </article>
 </div>
 <script>
 function copyPrompt() {

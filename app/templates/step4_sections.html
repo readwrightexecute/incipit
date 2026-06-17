@@ -1,8 +1,24 @@
-<p class="step-label">Step 4 of 5 — Draft &amp; refine</p>
+<script id="session-meta" type="application/json">{"id": "{{ s.id }}", "idea": {{ s.idea|tojson }}, "phase": "{{ s.phase }}"}</script>
+<p class="step-label">Step 3 of 4 — Draft &amp; refine</p>
 <div hx-ext="sse" sse-connect="/sessions/{{ s.id }}/events">
   <div id="status-bar" sse-swap="model_loading,progress,error"></div>
   {% for sec in s.sections %}
   {% include "partials/section_card.html" %}
   {% endfor %}
-  <a href="/sessions/{{ s.id }}/final" role="button">Assemble final mega-prompt →</a>
+  <div class="action-bar">
+    <a href="/sessions/{{ s.id }}/final" role="button">Assemble final mega-prompt →</a>
+    <button class="contrast" hx-post="/sessions/{{ s.id }}/party"
+            hx-target="#party-region" hx-swap="innerHTML"
+            title="Convene the BMAD round table to review and refine these sections"
+            {% if s.party_status == 'running' %}disabled{% endif %}>
+      🎉 Submit &amp; Party
+    </button>
+  </div>
+  <div id="party-region">
+    {% if s.party_status != 'idle' %}
+    {% include "partials/party_panel.html" %}
+    {% elif auto_party|default(false) %}
+    {% include "partials/party_waiting.html" %}
+    {% endif %}
+  </div>
 </div>

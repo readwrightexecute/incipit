@@ -7,7 +7,7 @@
   <article>
     <header><h3>{{ sec.title }}</h3></header>
     {% if sec.status == 'generating' %}
-    <p><span class="spinner"></span> Drafting…</p>
+    <p><span class="spinner" data-anim="bars"></span> Drafting…</p>
     {% else %}
     <p><small>Queued…</small></p>
     {% endif %}

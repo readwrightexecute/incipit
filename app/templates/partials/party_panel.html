@@ -1,25 +1,27 @@
-<article id="party-panel">
-  <header>
-    <strong>🎉 Party mode</strong> — BMAD round table
-  </header>
-  <p class="assumption">
-    The round table convenes
-    {% for p in personas %}{{ p.emoji }} {{ p.name }}{{ ", " if not loop.last }}{% endfor %}
-    with {{ facilitator.emoji }} {{ facilitator.name }} facilitating. Each reviewer
-    speaks in turn (seeing what others said), the facilitator passes the mic back to
-    settle disagreements, and once they reach consensus you'll approve or deny the
-    agreed changes. This runs several model calls — it can take a minute.
-  </p>
-
-  <div id="party-turn" class="party-turn" sse-swap="party_turn"></div>
-
-  {# Live bubbles append via sse-swap; initial/resume messages render here server-side. #}
-  <div id="party-chat" class="chat" sse-swap="party_msg" hx-swap="beforeend">
-    {% include "partials/party_chat.html" %}
+<div id="party-panel">
+  {# Floating chat dock (fixed, bottom corner) — the live round-table transcript. #}
+  <div class="party-dock" id="party-dock">
+    <header class="party-dock-head">
+      <strong>🎉 Round table</strong>
+      <button type="button" class="party-dock-toggle"
+              onclick="document.getElementById('party-dock').classList.toggle('collapsed')"
+              title="Minimize / expand"></button>
+    </header>
+    <div class="party-dock-body">
+      <div id="party-turn" class="party-turn" sse-swap="party_turn"></div>
+      <div id="party-chat" class="chat" sse-swap="party_msg" hx-swap="beforeend">
+        {% include "partials/party_chat.html" %}
+      </div>
+    </div>
   </div>
 
+  {# Proposed changes render inline on the page, to approve / deny. #}
+  <p class="assumption" style="margin-top:1rem">
+    🎉 The round table is deliberating in the chat (corner). Proposed changes will
+    appear here for you to approve or deny.
+  </p>
   <div id="party-changes"
        hx-get="/sessions/{{ s.id }}/party/changes"
-       hx-trigger="load, every 4s"
+       hx-trigger="load, sse:party_ready, sse:party_changed, every 4s"
        hx-swap="innerHTML"></div>
-</article>
+</div>

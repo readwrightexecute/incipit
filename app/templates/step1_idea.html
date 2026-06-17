@@ -1,22 +1,55 @@
 {% extends "base.html" %}
 {% block content %}
-<p class="step-label">Step 1 of 5 — Brain dump</p>
+<p class="step-label">Step 1 of 4 — Brain dump &amp; calibration</p>
 <form hx-target="#wizard" hx-swap="innerHTML">
   <label for="idea">What do you want to build, and why?</label>
   <textarea id="idea" name="idea" required
     placeholder="Dump everything: the idea, who it's for, what problem it solves, anything you already know you want or don't want. Rough is fine."></textarea>
-  <div class="refine-row">
+
+  <div class="seg-group">
+    <p class="seg-legend">Is this a new project or an existing codebase?</p>
+    <div class="seg">
+      {% for value, label, hint in project_types %}
+      <label class="seg-btn" title="{{ hint }}">
+        <input type="radio" name="project_type" value="{{ value }}" {% if loop.first %}checked{% endif %}>
+        <span class="seg-name">{{ label }}</span>
+        <small class="seg-hint">{{ hint }}</small>
+      </label>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div id="repo-row" class="seg-group">
+    <label for="repo_url" class="seg-legend">Repo link <small class="seg-hint" style="font-weight:400">— so the spec fits your existing codebase</small></label>
+    <input type="url" id="repo_url" name="repo_url" placeholder="https://github.com/owner/repo">
+    <small class="assumption">We fetch the README + structure and feed a summary into drafting. Public GitHub works best; leave blank to skip.</small>
+  </div>
+
+  <div class="seg-group">
+    <p class="seg-legend">Form factor</p>
+    <div class="seg">
+      {% for ff in form_factors %}
+      <label class="seg-btn">
+        <input type="radio" name="form_factor" value="{{ ff }}" {% if loop.first %}checked{% endif %}>
+        <span class="seg-name">{{ ff }}</span>
+      </label>
+      {% endfor %}
+    </div>
+  </div>
+
+  <small class="assumption">
+    <strong>Shoot the Moon</strong> runs everything hands-off — it accepts the calibration above
+    (inferring anything you skip), takes the generated assumptions as answers, drafts the full spec,
+    then convenes the party round table and applies the consensus automatically. You can still edit
+    and refine afterward.
+  </small>
+  <div class="action-bar">
     <button type="submit" hx-post="/sessions">Next →</button>
     <button type="submit" class="contrast" hx-post="/moonshot"
             title="Run the whole process automatically with smart-default answers and a BMAD round table">
       🌙 Shoot the Moon
     </button>
   </div>
-  <small class="assumption">
-    <strong>Shoot the Moon</strong> runs everything hands-off — it infers the calibration,
-    accepts the generated assumptions as answers, drafts the full spec, then convenes the
-    party round table and applies the consensus automatically. You can still edit and refine
-    afterward.
-  </small>
 </form>
+<div id="history"></div>
 {% endblock %}

@@ -7,9 +7,17 @@
   <link rel="stylesheet" href="/static/pico.min.css">
   <script src="/static/htmx.min.js"></script>
   <script src="/static/sse.js"></script>
+  <script src="/static/spinner.js"></script>
+  <script src="/static/history.js"></script>
   <style>
     /* ---- Violet dark theme (overrides Pico's default azure) ---- */
-    :root { --pico-border-radius: .5rem; }
+    /* Self-hosted terminal font (OFL — see /static/fonts/OFL.txt) */
+    @font-face {
+      font-family: "Departure Mono";
+      src: url("/static/fonts/DepartureMono-Regular.woff2") format("woff2");
+      font-weight: 400; font-style: normal; font-display: swap;
+    }
+    :root { --pico-border-radius: .5rem; --mono: "Departure Mono", ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
     [data-theme="dark"] {
       --pico-background-color: #16161f;
       --pico-color: #c6cbe3;
@@ -39,13 +47,49 @@
     h1 { letter-spacing: -.02em; }
     .step-label { color: var(--pico-primary); font-size: .8rem; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; }
     .section-content { white-space: pre-wrap; font-family: var(--pico-font-family); background: var(--pico-card-background-color); padding: .75rem 1rem; border-radius: var(--pico-border-radius); border: 1px solid var(--pico-card-border-color); }
-    .spinner { display: inline-block; width: 1em; height: 1em; border: 2px solid var(--pico-primary); border-top-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; vertical-align: -.15em; }
-    @keyframes spin { to { transform: rotate(360deg); } }
+    /* ---- ASCII spinner (frames + color driven by /static/spinner.js) ---- */
+    .spinner { display: inline-block; font-family: var(--mono); white-space: pre; color: var(--pico-primary); }
     @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
     @keyframes bubble-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+    @keyframes cursor-blink { 50% { opacity: 0; } }
+
+    /* ---- Terminal-style activity block ---- */
     #status-bar:empty { display: none; }
-    #status-bar { padding: .55rem 1rem; border-radius: var(--pico-border-radius); background: var(--pico-card-background-color);
-      border: 1px solid var(--pico-card-border-color); border-left: 3px solid var(--pico-primary); margin-bottom: 1rem; font-size: .9rem; }
+    #status-bar {
+      position: relative;
+      margin-bottom: 1rem;
+      padding: .6rem .9rem .6rem 2rem;
+      font-family: var(--mono);
+      font-size: .85rem; line-height: 1.55;
+      color: #c8d3f5;
+      background: #0b0b12;
+      border: 1px solid #2a2c3e;
+      border-radius: var(--pico-border-radius);
+      box-shadow: inset 0 0 0 1px rgba(124, 92, 214, .06);
+      white-space: pre-wrap; word-break: break-word;
+    }
+    /* shell prompt + blinking block cursor */
+    #status-bar::before { content: "❯"; position: absolute; left: .85rem; color: var(--pico-primary); font-weight: 700; }
+    #status-bar::after { content: "▋"; margin-left: .15rem; color: var(--pico-primary); animation: cursor-blink 1.1s steps(1) infinite; }
+    /* ---- Segmented button selectors (step 1 calibration) ---- */
+    .seg-group { margin-bottom: 1.1rem; }
+    /* Repo-link row only appears once "existing codebase" is selected. */
+    #repo-row { display: none; }
+    form:has(input[name="project_type"][value="existing"]:checked) #repo-row { display: block; }
+    .seg-legend { font-weight: 600; color: var(--pico-color); margin-bottom: .4rem; }
+    .seg { display: flex; flex-wrap: wrap; gap: .5rem; }
+    .seg-btn { flex: 1 1 0; min-width: 8.5rem; display: flex; flex-direction: column; gap: .1rem;
+      margin: 0; padding: .55rem .85rem; cursor: pointer; position: relative;
+      background: var(--pico-form-element-background-color);
+      border: 1px solid var(--pico-form-element-border-color);
+      border-radius: var(--pico-border-radius); transition: border-color .12s, background .12s, box-shadow .12s; }
+    .seg-btn:hover { border-color: var(--pico-primary); }
+    .seg-btn input { position: absolute; opacity: 0; width: 0; height: 0; margin: 0; pointer-events: none; }
+    .seg-btn:has(input:checked) { border-color: var(--pico-primary);
+      background: rgba(187, 154, 247, .12); box-shadow: inset 0 0 0 1px var(--pico-primary); }
+    .seg-btn:has(input:focus-visible) { outline: 2px solid var(--pico-form-element-focus-color); outline-offset: 1px; }
+    .seg-name { font-weight: 600; color: var(--pico-color); }
+    .seg-hint { color: var(--pico-muted-color); font-size: .76rem; line-height: 1.25; }
     .refine-row { display: flex; gap: .5rem; margin-top: .5rem; }
     .refine-row select, .refine-row input { margin-bottom: 0; }
     .assumption { color: var(--pico-muted-color); font-size: .85rem; }
@@ -69,9 +113,57 @@
     .bubble .msg { white-space: pre-wrap; margin-top: .15rem; }
     .party-turn { font-size: .85rem; color: var(--pico-muted-color); min-height: 1.2em; }
     .party-turn:not(:empty) { animation: pulse 1.6s ease-in-out infinite; }
+    /* Floating party-chat dock (pops up like a browser chat widget) */
+    .party-dock { position: fixed; right: 1rem; bottom: 4.75rem; z-index: 40;
+      width: min(380px, calc(100vw - 2rem));
+      background: var(--pico-card-background-color); border: 1px solid var(--pico-card-border-color);
+      border-radius: var(--pico-border-radius); box-shadow: 0 12px 34px rgba(0,0,0,.5);
+      display: flex; flex-direction: column; overflow: hidden; }
+    .party-dock-head { display: flex; align-items: center; justify-content: space-between; gap: .5rem;
+      padding: .45rem .7rem; background: var(--pico-primary-background); color: #fff; }
+    .party-dock-head strong { color: #fff; }
+    .party-dock-toggle { background: transparent; border: 0; color: #fff; cursor: pointer;
+      width: auto; margin: 0; padding: 0 .25rem; font-size: 1rem; line-height: 1; }
+    .party-dock-toggle::before { content: "▾"; }
+    .party-dock.collapsed .party-dock-toggle::before { content: "▸"; }
+    .party-dock-body { display: flex; flex-direction: column; gap: .4rem; padding: .5rem .6rem; }
+    .party-dock.collapsed .party-dock-body { display: none; }
+    .party-dock .chat { max-height: 44vh; border: 0; padding: .2rem; }
+    @media (max-width: 600px) { .party-dock { right: .5rem; left: .5rem; width: auto; } }
+    /* Fixed bottom action bar (per-step next-step / party buttons) */
+    .action-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 45;
+      display: flex; flex-wrap: wrap; gap: .5rem; justify-content: center; align-items: center;
+      padding: .6rem 1rem; background: rgba(20, 20, 31, .92); backdrop-filter: blur(6px);
+      border-top: 1px solid var(--pico-card-border-color); }
+    .action-bar button, .action-bar a[role="button"] { margin-bottom: 0; width: auto; }
+    .action-bar .bar-note { flex-basis: 100%; text-align: center; margin: 0 0 .1rem; }
+    main.container { padding-bottom: 5.5rem; } /* clear the fixed action bar */
+    .final-actions { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; }
+    .final-actions button, .final-actions a[role="button"] { margin-bottom: 0; }
     .change-card { border-left: 3px solid var(--pico-muted-border-color); }
     .change-card.applied { border-left-color: #9ece6a; }
     .change-card.denied { opacity: .55; border-left-color: #f7768e; }
+    /* QA findings (lint + LLM review) */
+    .qa-list { display: flex; flex-direction: column; gap: .35rem; margin: .5rem 0; }
+    .qa-finding { font-size: .88rem; padding: .4rem .6rem; border-radius: var(--pico-border-radius);
+      border: 1px solid var(--pico-muted-border-color); border-left: 3px solid var(--pico-muted-border-color); }
+    .qa-finding .qa-sev { font-family: var(--mono); font-size: .72rem; font-weight: 700; margin-right: .4rem; opacity: .9; }
+    .qa-finding.sev-high, .qa-finding.sev-error { border-left-color: #f7768e; }
+    .qa-finding.sev-med, .qa-finding.sev-warn { border-left-color: #e0af68; }
+    .qa-finding.sev-low { border-left-color: #7aa2f7; }
+    .qa-finding.sev-info { border-left-color: #9ece6a; }
+    /* Client-side history (home page) */
+    #history { margin-top: 1.5rem; }
+    .hist-list { display: flex; flex-direction: column; gap: .4rem; margin: .5rem 0; }
+    .hist-item { display: grid; grid-template-columns: 1fr auto; gap: .15rem .75rem; align-items: center;
+      padding: .5rem .75rem; border: 1px solid var(--pico-card-border-color); border-radius: var(--pico-border-radius); background: var(--pico-card-background-color); }
+    .hist-idea { grid-column: 1; font-size: .9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .hist-meta { grid-column: 1; }
+    .hist-actions { grid-column: 2; grid-row: 1 / span 2; display: flex; gap: .35rem; }
+    .hist-actions a, .hist-actions button { margin-bottom: 0; padding: .2rem .6rem; font-size: .78rem; width: auto; }
+    .history-modal { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center;
+      justify-content: center; padding: 1rem; z-index: 50; }
+    .history-modal > article { max-width: 760px; width: 100%; margin: 0; }
   </style>
 </head>
 <body>
@@ -90,11 +182,16 @@
   </div>
 </main>
 <script>
-  // Keep the party-mode chat scrolled to the newest message after SSE swaps.
-  document.body.addEventListener('htmx:afterSwap', function (e) {
-    if (e.target && e.target.id === 'party-chat') {
-      e.target.scrollTop = e.target.scrollHeight;
-    }
+  // Keep the party-mode chat pinned to the newest message. Bubbles append via
+  // the SSE extension's sse-swap, which fires htmx:sseMessage (not
+  // htmx:afterSwap), so listen for both — plus afterSettle for the initial
+  // server-rendered list when the panel first loads.
+  function scrollPartyChat() {
+    var chat = document.getElementById('party-chat');
+    if (chat) chat.scrollTop = chat.scrollHeight;
+  }
+  ['htmx:sseMessage', 'htmx:afterSwap', 'htmx:afterSettle'].forEach(function (ev) {
+    document.body.addEventListener(ev, scrollPartyChat);
   });
 </script>
 </body>
