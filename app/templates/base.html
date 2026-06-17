@@ -135,7 +135,8 @@
       padding: .6rem; background: var(--pico-background-color); border: 1px solid var(--pico-card-border-color); border-radius: var(--pico-border-radius); }
     .bubble { padding: .5rem .8rem; border-radius: 10px; background: var(--pico-card-background-color);
       border: 1px solid var(--pico-muted-border-color); animation: bubble-in .25s ease-out; }
-    .bubble.facilitator { border-left: 3px solid var(--pico-primary); }
+    .bubble.facilitator { border-color: color-mix(in srgb, var(--pico-primary) 45%, var(--pico-muted-border-color));
+      background: color-mix(in srgb, var(--pico-primary) 8%, var(--pico-card-background-color)); }
     .bubble.system { background: transparent; border-style: dashed; font-size: var(--fs-sm); color: var(--pico-muted-color); text-align: center; }
     .bubble .who { font-weight: 600; font-size: var(--fs-sm); color: var(--pico-primary); }
     .bubble.facilitator .who { color: var(--warning); }
@@ -180,18 +181,30 @@
     main.container { padding-bottom: 5.5rem; } /* clear the fixed action bar */
     .final-actions { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; }
     .final-actions button, .final-actions a[role="button"] { margin-bottom: 0; }
-    .change-card { border-left: 3px solid var(--pico-muted-border-color); }
-    .change-card.applied { border-left-color: var(--success); }
-    .change-card.denied { opacity: .55; border-left-color: var(--danger); }
+    /* State reads as a full-border + faint tint on the inner card, not a side stripe. */
+    .change-card article { transition: border-color .15s, background .15s; }
+    .change-card.applied article { border-color: color-mix(in srgb, var(--success) 50%, var(--pico-card-border-color));
+      background: color-mix(in srgb, var(--success) 8%, var(--pico-card-background-color)); }
+    .change-card.denied { opacity: .55; }
+    .change-card.denied article { border-color: color-mix(in srgb, var(--danger) 45%, var(--pico-card-border-color)); }
     /* QA findings (lint + LLM review) */
     .qa-list { display: flex; flex-direction: column; gap: .35rem; margin: .5rem 0; }
     .qa-finding { font-size: var(--fs-sm); padding: .4rem .6rem; border-radius: var(--pico-border-radius);
-      border: 1px solid var(--pico-muted-border-color); border-left: 3px solid var(--pico-muted-border-color); }
+      border: 1px solid var(--pico-muted-border-color); }
     .qa-finding .qa-sev { font-family: var(--mono); font-size: var(--fs-xs); font-weight: 700; margin-right: .4rem; opacity: .9; }
-    .qa-finding.sev-high, .qa-finding.sev-error { border-left-color: var(--danger); }
-    .qa-finding.sev-med, .qa-finding.sev-warn { border-left-color: var(--warning); }
-    .qa-finding.sev-low { border-left-color: var(--info); }
-    .qa-finding.sev-info { border-left-color: var(--success); }
+    /* Severity reads as a full colored border + faint tint, with the tag in the same color. */
+    .qa-finding.sev-high, .qa-finding.sev-error { border-color: color-mix(in srgb, var(--danger) 45%, var(--pico-muted-border-color));
+      background: color-mix(in srgb, var(--danger) 8%, transparent); }
+    .qa-finding.sev-med, .qa-finding.sev-warn { border-color: color-mix(in srgb, var(--warning) 45%, var(--pico-muted-border-color));
+      background: color-mix(in srgb, var(--warning) 8%, transparent); }
+    .qa-finding.sev-low { border-color: color-mix(in srgb, var(--info) 45%, var(--pico-muted-border-color));
+      background: color-mix(in srgb, var(--info) 8%, transparent); }
+    .qa-finding.sev-info { border-color: color-mix(in srgb, var(--success) 45%, var(--pico-muted-border-color));
+      background: color-mix(in srgb, var(--success) 8%, transparent); }
+    .qa-finding.sev-high .qa-sev, .qa-finding.sev-error .qa-sev { color: var(--danger); }
+    .qa-finding.sev-med .qa-sev, .qa-finding.sev-warn .qa-sev { color: var(--warning); }
+    .qa-finding.sev-low .qa-sev { color: var(--info); }
+    .qa-finding.sev-info .qa-sev { color: var(--success); }
     /* Client-side history (home page) */
     #history { margin-top: 1.5rem; }
     .hist-list { display: flex; flex-direction: column; gap: .4rem; margin: .5rem 0; }
