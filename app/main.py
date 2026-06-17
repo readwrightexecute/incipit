@@ -110,7 +110,7 @@ async def resume(request: Request, sid: str):
         return _render("resume.html", request, body="step_moonshot.html", s=s)
     if s.phase == "final":
         return _render("step6_final.html", request, s=s,
-                       mega_prompt=flow.assemble_final(s), lint=flow.lint_spec(s))
+                       mega_prompt=flow.assemble_final(s))
     return _render("step1_idea.html", request, **_calibration_ctx())
 
 
@@ -403,12 +403,27 @@ async def party_qa_approve_all(request: Request, sid: str):
 
 # ---- Post-processing QA (final page) ----
 
+@app.get("/sessions/{sid}/qa", response_class=HTMLResponse)
+async def qa_panel(request: Request, sid: str):
+    """QA panel shown at the end of step 3 — lint report + deeper-review trigger.
+    Loaded on page load and refreshed on sse:job_done (once drafting finishes)."""
+    s = state.get(sid)
+    if s is None:
+        return HTMLResponse("")
+    return _render("partials/qa_panel.html", request, s=s, lint=flow.lint_spec(s))
+
+
 @app.post("/sessions/{sid}/qa-review", response_class=HTMLResponse)
 async def qa_review_start(request: Request, sid: str):
     s = state.get(sid)
     if s is None:
         return _render("expired.html", request)
     if s.qa_review_status != "running":
+        # Flip to running synchronously so the returned partial renders the
+        # spinner + self-refresh attrs; otherwise the background task hasn't set
+        # the status yet and the panel comes back blank and inert.
+        s.qa_review_status = "running"
+        s.qa_review = []
         asyncio.create_task(flow.run_qa_review(s))
     return _render("partials/qa_review.html", request, s=s)
 
@@ -419,6 +434,25 @@ async def qa_review_panel(request: Request, sid: str):
     if s is None:
         return HTMLResponse("")
     return _render("partials/qa_review.html", request, s=s)
+
+
+@app.post("/sessions/{sid}/qa-fix", response_class=HTMLResponse)
+async def qa_fix_start(request: Request, sid: str):
+    s = state.get(sid)
+    if s is None:
+        return _render("expired.html", request)
+    if s.qa_fix_status != "running":
+        s.qa_fix_status = "running"  # set synchronously so the partial shows progress
+        asyncio.create_task(flow.run_qa_fix(s))
+    return _render("partials/qa_fix.html", request, s=s)
+
+
+@app.get("/sessions/{sid}/qa-fix", response_class=HTMLResponse)
+async def qa_fix_panel(request: Request, sid: str):
+    s = state.get(sid)
+    if s is None:
+        return HTMLResponse("")
+    return _render("partials/qa_fix.html", request, s=s)
 
 
 @app.get("/sessions/{sid}/megaprompt", response_class=HTMLResponse)

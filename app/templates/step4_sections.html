@@ -1,24 +1,28 @@
 <script id="session-meta" type="application/json">{"id": "{{ s.id }}", "idea": {{ s.idea|tojson }}, "phase": "{{ s.phase }}"}</script>
-<p class="step-label">Step 3 of 4 — Draft &amp; refine</p>
+<p class="step-label">Step 3 of 3 — Draft, QA &amp; party</p>
 <div hx-ext="sse" sse-connect="/sessions/{{ s.id }}/events">
   <div id="status-bar" sse-swap="model_loading,progress,error"></div>
   {% for sec in s.sections %}
   {% include "partials/section_card.html" %}
   {% endfor %}
+
+  {# QA appears here once drafting finishes (loads on job_done). #}
+  <div id="qa-area"
+       hx-get="/sessions/{{ s.id }}/qa"
+       hx-trigger="load, sse:job_done"
+       hx-swap="innerHTML"></div>
+
+  <div id="party-region">
+    {% if s.party_status != 'idle' %}{% include "partials/party_panel.html" %}{% endif %}
+  </div>
+
   <div class="action-bar">
-    <a href="/sessions/{{ s.id }}/final" role="button">Assemble final mega-prompt →</a>
     <button class="contrast" hx-post="/sessions/{{ s.id }}/party"
             hx-target="#party-region" hx-swap="innerHTML"
             title="Convene the BMAD round table to review and refine these sections"
             {% if s.party_status == 'running' %}disabled{% endif %}>
-      🎉 Submit &amp; Party
+      🎉 Party review
     </button>
-  </div>
-  <div id="party-region">
-    {% if s.party_status != 'idle' %}
-    {% include "partials/party_panel.html" %}
-    {% elif auto_party|default(false) %}
-    {% include "partials/party_waiting.html" %}
-    {% endif %}
+    <a href="/sessions/{{ s.id }}/final" role="button">Finish →</a>
   </div>
 </div>

@@ -87,6 +87,7 @@ class Session:
     # Post-processing QA (final page): on-demand LLM critique of the spec.
     qa_review: list = field(default_factory=list)  # [{severity, category, text}]
     qa_review_status: str = "idle"  # idle | running | ready | error
+    qa_fix_status: str = "idle"  # idle | running | ready | error — "implement fixes"
     # SSE fan-out: one queue per open /events connection. A single shared
     # queue silently splits events between stale and live connections.
     subscribers: list[asyncio.Queue] = field(default_factory=list)

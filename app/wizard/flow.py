@@ -820,3 +820,29 @@ async def run_qa_review(s: Session) -> None:
         s.qa_review_status = "error"
         s.error = str(e)
         await _emit(s, "qa_review_ready")
+
+
+async def run_qa_fix(s: Session) -> None:
+    """Implement the QA-review findings: ask the model to turn them into
+    per-section edits, then apply each through the refine pipeline."""
+    try:
+        s.qa_fix_status = "running"
+        findings = "\n".join(
+            f"- [{f.get('severity', '')}] {f.get('category', '')}: {f.get('text', '')}"
+            for f in s.qa_review)
+        prompt = _jinja.get_template("qa_fix.md.j2").render(
+            spec=assemble_final(s), sections=s.sections, findings=findings)
+        raw = await _generate(s, prompt, max_tokens=1200, label="Planning QA fixes")
+        changes = _parse_changes(s, raw)  # reuse the party SECTION/CHANGE parser
+        for ch in changes:
+            sec = s.section(ch.section_id)
+            if sec is not None:
+                await refine_section(s, sec, ch.instruction)
+        s.qa_fix_status = "ready"
+        await _emit(s, "mega_updated")
+        await _emit(s, "qa_fix_ready")
+    except Exception as e:
+        log.exception("qa fix failed")
+        s.qa_fix_status = "error"
+        s.error = str(e)
+        await _emit(s, "qa_fix_ready")

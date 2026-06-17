@@ -1,0 +1,28 @@
+<article id="qa-section" style="margin-top:1.4rem">
+  <header><strong>🔍 QA</strong> — automated checks before you finish</header>
+  {% set pending = s.sections | rejectattr('status', 'equalto', 'done') | list %}
+  {% if pending %}
+  <p class="assumption">QA runs once all sections finish drafting…</p>
+  {% else %}
+  {% if lint %}
+  <div class="qa-list">
+    {% for f in lint %}
+    <div class="qa-finding sev-{{ f.severity }}">
+      <span class="qa-sev">{{ 'OK' if f.severity == 'info' else f.severity|upper }}</span> {{ f.message }}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+  <p style="margin:.6rem 0 0">
+    <button class="secondary" hx-post="/sessions/{{ s.id }}/qa-review"
+            hx-target="#qa-review-region" hx-swap="innerHTML"
+            {% if s.qa_review_status == 'running' %}disabled{% endif %}
+            title="Have the model critique the assembled spec for ambiguity, testability, gaps and contradictions">
+      Run deeper QA review (LLM)
+    </button>
+  </p>
+  <div id="qa-review-region">
+    {% if s.qa_review_status != 'idle' %}{% include "partials/qa_review.html" %}{% endif %}
+  </div>
+  {% endif %}
+</article>
