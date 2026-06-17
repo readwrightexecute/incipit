@@ -2,9 +2,9 @@
      {% if s.qa_fix_status == 'running' %}hx-get="/sessions/{{ s.id }}/qa-fix"
      hx-trigger="sse:qa_fix_ready, every 3s" hx-swap="outerHTML"{% endif %}>
   {% if s.qa_fix_status == 'running' %}
-  <p><span class="spinner" data-anim="diamonds"></span> Implementing fixes — revising the flagged sections (watch the status line above)…</p>
+  <p><span class="spinner" data-anim="diamonds"></span> Implementing fixes — revising the flagged sections… <a href="#top">↑ jump to status</a></p>
   {% elif s.qa_fix_status == 'ready' %}
-  <p style="color:#38a169">✓ Fixes applied to your sections. Re-run QA to verify, or Finish → to see your updated Super-Prompt.</p>
+  <p style="color:#38a169">✓ Fixes applied — your sections above are updated. Re-run QA to verify, or Finish → for your updated Super-Prompt.</p>
   {% elif s.qa_fix_status == 'error' %}
   <p class="error">Couldn't apply the fixes{% if s.error %}: {{ s.error }}{% endif %}. You can try again.</p>
   {% endif %}

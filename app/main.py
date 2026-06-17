@@ -403,6 +403,17 @@ async def party_qa_approve_all(request: Request, sid: str):
 
 # ---- Post-processing QA (final page) ----
 
+@app.get("/sessions/{sid}/sections-fragment", response_class=HTMLResponse)
+async def sections_fragment(request: Request, sid: str):
+    """All section cards as a group — refetched after a background pass
+    (Implement fixes / party) rewrites sections, so the page updates without a reload."""
+    s = state.get(sid)
+    if s is None:
+        return HTMLResponse("")
+    return _render("partials/sections_list.html", request, s=s,
+                   examples=flow.REFINE_EXAMPLES)
+
+
 @app.get("/sessions/{sid}/qa", response_class=HTMLResponse)
 async def qa_panel(request: Request, sid: str):
     """QA panel shown at the end of step 3 — lint report + deeper-review trigger.

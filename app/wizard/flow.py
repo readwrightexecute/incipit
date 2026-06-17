@@ -509,6 +509,7 @@ async def apply_party_change(s: Session, cid: str) -> None:
     ch.status = "applied" if ok else "pending"
     await _emit(s, "party_changed", cid)
     await _emit(s, "mega_updated")
+    await _emit(s, "sections_updated")  # refresh the section cards on step 3
 
 
 async def apply_party_changes(s: Session, cids: list[str]) -> None:
@@ -840,6 +841,7 @@ async def run_qa_fix(s: Session) -> None:
                 await refine_section(s, sec, ch.instruction)
         s.qa_fix_status = "ready"
         await _emit(s, "mega_updated")
+        await _emit(s, "sections_updated")  # refresh the section cards on step 3
         await _emit(s, "qa_fix_ready")
     except Exception as e:
         log.exception("qa fix failed")
