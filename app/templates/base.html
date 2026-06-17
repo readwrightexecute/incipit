@@ -52,6 +52,15 @@
     @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
     @keyframes bubble-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
     @keyframes cursor-blink { 50% { opacity: 0; } }
+    /* Motion is opt-in to comfort: kill the always-on loops (blink/pulse) and
+       collapse entrances to an instant state for users who ask for less motion. */
+    @media (prefers-reduced-motion: reduce) {
+      .terminal::after, #status-bar::after,
+      .party-turn:not(:empty) { animation: none; }
+      .bubble { animation: none; }
+      .seg-btn { transition: none; }
+      /* (.spinner is JS-driven and already holds a single frame under reduce — see spinner.js) */
+    }
 
     /* ---- Terminal-style activity block (#status-bar at top, .terminal reusable) ---- */
     #status-bar:empty { display: none; }
