@@ -60,3 +60,13 @@ DISABLE_THINKING = os.environ.get("PROMPTGEN_DISABLE_THINKING", "").lower() in (
 
 # Session housekeeping
 SESSION_TTL = _int("PROMPTGEN_SESSION_TTL", 24 * 3600)
+
+# Existing-project repo grounding (Workstream F). For "existing" projects the
+# wizard fetches a compact repo summary and injects it into the drafting prompts.
+# GITHUB_TOKEN is optional (lifts the 60 req/h anonymous rate limit). FIRECRAWL_URL
+# is the homelab Firecrawl base (e.g. http://firecrawl.default.svc:3002) used as a
+# fallback for non-GitHub hosts or API failures; blank disables the fallback.
+GITHUB_TOKEN = os.environ.get("PROMPTGEN_GITHUB_TOKEN", "")
+FIRECRAWL_URL = os.environ.get("PROMPTGEN_FIRECRAWL_URL", "")
+REPO_TIMEOUT = _int("PROMPTGEN_REPO_TIMEOUT", 25)
+REPO_CONTEXT_MAX_CHARS = _int("PROMPTGEN_REPO_CONTEXT_MAX", 6000)
