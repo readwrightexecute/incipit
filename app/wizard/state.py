@@ -102,6 +102,9 @@ class Session:
     def party_qa_change(self, cid: str) -> "PartyQAChange | None":
         return next((c for c in self.party_qa_changes if c.id == cid), None)
 
+    def qa_finding(self, fid: str) -> dict | None:
+        return next((f for f in self.qa_review if f.get("id") == fid), None)
+
     def subscribe(self) -> asyncio.Queue:
         q: asyncio.Queue = asyncio.Queue()
         self.subscribers.append(q)

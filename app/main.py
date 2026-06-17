@@ -504,6 +504,33 @@ async def qa_fix_panel(request: Request, sid: str):
     return _render("partials/qa_fix.html", request, s=s)
 
 
+@app.post("/sessions/{sid}/qa-fix-item/{fid}", response_class=HTMLResponse)
+async def qa_fix_item_start(request: Request, sid: str, fid: str):
+    """Fix one QA finding on its own. Flips fix_status synchronously so the
+    returned card renders the 'fixing…' state + self-refresh attrs."""
+    s = state.get(sid)
+    if s is None:
+        return _render("expired.html", request)
+    f = s.qa_finding(fid)
+    if f is None:
+        return HTMLResponse("")
+    if f.get("fix_status") != "running":
+        f["fix_status"] = "running"
+        asyncio.create_task(flow.run_qa_fix_item(s, f))
+    return _render("partials/qa_finding.html", request, s=s, f=f)
+
+
+@app.get("/sessions/{sid}/qa-fix-item/{fid}", response_class=HTMLResponse)
+async def qa_fix_item_panel(request: Request, sid: str, fid: str):
+    s = state.get(sid)
+    if s is None:
+        return HTMLResponse("")
+    f = s.qa_finding(fid)
+    if f is None:
+        return HTMLResponse("")
+    return _render("partials/qa_finding.html", request, s=s, f=f)
+
+
 @app.get("/sessions/{sid}/megaprompt", response_class=HTMLResponse)
 async def megaprompt(request: Request, sid: str):
     s = state.get(sid)

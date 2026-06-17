@@ -79,6 +79,7 @@
       .party-turn:not(:empty) { animation: none; }
       .bubble { animation: none; }
       .seg-btn { transition: none; }
+      .qa-finding.is-fixing, .qa-finding.is-fixed, .qa-fix-state.done { animation: none; }
       /* (.spinner is JS-driven and already holds a single frame under reduce — see spinner.js) */
     }
 
@@ -189,7 +190,7 @@
     .change-card.denied article { border-color: color-mix(in srgb, var(--danger) 45%, var(--pico-card-border-color)); }
     /* QA findings (lint + LLM review) */
     .qa-list { display: flex; flex-direction: column; gap: .35rem; margin: .5rem 0; }
-    .qa-finding { font-size: var(--fs-sm); padding: .4rem .6rem; border-radius: var(--pico-border-radius);
+    .qa-finding { display: flex; flex-direction: column; gap: .4rem; font-size: var(--fs-sm); padding: .4rem .6rem; border-radius: var(--pico-border-radius);
       border: 1px solid var(--pico-muted-border-color); }
     .qa-finding .qa-sev { font-family: var(--mono); font-size: var(--fs-xs); font-weight: 700; margin-right: .4rem; opacity: .9; }
     /* Severity reads as a full colored border + faint tint, with the tag in the same color. */
@@ -205,6 +206,20 @@
     .qa-finding.sev-med .qa-sev, .qa-finding.sev-warn .qa-sev { color: var(--warning); }
     .qa-finding.sev-low .qa-sev { color: var(--info); }
     .qa-finding.sev-info .qa-sev { color: var(--success); }
+    /* Per-finding fix control + the fixing → fixed transition */
+    .qa-fix { display: flex; justify-content: flex-end; align-items: center; gap: .5rem; min-height: 1.7rem; }
+    .qa-fix-btn { margin: 0; width: auto; padding: .2rem .7rem; font-size: var(--fs-xs); }
+    .qa-fix-state { font-size: var(--fs-xs); font-weight: 600; display: inline-flex; align-items: center; gap: .35rem; }
+    .qa-fix-state.fixing { color: var(--warning); }
+    .qa-fix-state.done   { color: var(--success); animation: check-pop .35s cubic-bezier(.16, 1, .3, 1); }
+    .qa-fix-state.noop   { color: var(--pico-muted-color); }
+    .qa-fix-state.error  { color: var(--danger); }
+    .qa-finding.is-fixing { animation: pulse 1.4s ease-in-out infinite; }
+    /* After the sev-* rules so the resolved (success) state wins the specificity tie. */
+    .qa-finding.is-fixed { border-color: color-mix(in srgb, var(--success) 55%, var(--pico-muted-border-color));
+      background: color-mix(in srgb, var(--success) 8%, transparent); animation: fix-flash .6s ease-out; }
+    @keyframes fix-flash { from { background: color-mix(in srgb, var(--success) 24%, transparent); } to { background: color-mix(in srgb, var(--success) 8%, transparent); } }
+    @keyframes check-pop { from { transform: scale(.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
     /* Client-side history (home page) */
     #history { margin-top: 1.5rem; }
     .hist-list { display: flex; flex-direction: column; gap: .4rem; margin: .5rem 0; }

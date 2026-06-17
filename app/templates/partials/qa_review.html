@@ -6,14 +6,9 @@
   {% elif s.qa_review_status == 'ready' %}
     {% if s.qa_review %}
     <div class="qa-list">
-      {% for f in s.qa_review %}
-      <div class="qa-finding sev-{{ f.severity }}">
-        <span class="qa-sev">{{ f.severity|upper }}</span>
-        {% if f.category %}<strong>{{ f.category }}</strong> — {% endif %}{{ f.text }}
-      </div>
-      {% endfor %}
+      {% for f in s.qa_review %}{% include "partials/qa_finding.html" %}{% endfor %}
     </div>
-    <div id="qa-fix-region"
+    <div id="qa-fix-region">
       {% if s.qa_fix_status != 'idle' %}{% include "partials/qa_fix.html" %}{% endif %}
     </div>
     {% else %}

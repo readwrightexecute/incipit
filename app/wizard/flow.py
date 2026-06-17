@@ -798,10 +798,13 @@ def _parse_qa_review(raw: str) -> list[dict]:
         sev = "med" if sev == "medium" else sev
         body = m.group(2).strip()
         category, _, text = body.partition(":")
+        # id + fix_status drive the per-finding "Fix" control on the QA panel.
+        item = {"id": f"qf{len(out)}", "fix_status": "idle", "severity": sev}
         if text:
-            out.append({"severity": sev, "category": category.strip(), "text": text.strip()})
+            item["category"], item["text"] = category.strip(), text.strip()
         else:
-            out.append({"severity": sev, "category": "", "text": body})
+            item["category"], item["text"] = "", body
+        out.append(item)
     return out
 
 
@@ -850,3 +853,33 @@ async def run_qa_fix(s: Session) -> None:
         s.qa_fix_status = "error"
         s.error = str(e)
         await _emit(s, "qa_fix_ready")
+
+
+async def run_qa_fix_item(s: Session, finding: dict) -> None:
+    """Implement a single QA-review finding: turn just that finding into
+    per-section edits and apply them through the refine pipeline. Mutates
+    finding['fix_status'] in place (running → done | noop | error)."""
+    try:
+        finding["fix_status"] = "running"
+        one = (f"- [{finding.get('severity', '')}] "
+               f"{finding.get('category', '')}: {finding.get('text', '')}")
+        prompt = _jinja.get_template("qa_fix.md.j2").render(
+            spec=assemble_final(s), sections=s.sections, findings=one)
+        raw = await _generate(s, prompt, max_tokens=900, label="Fixing QA finding")
+        changes = _parse_changes(s, raw)
+        applied = 0
+        for ch in changes:
+            sec = s.section(ch.section_id)
+            if sec is not None and await refine_section(s, sec, ch.instruction):
+                applied += 1
+        finding["fix_status"] = "done" if applied else "noop"
+        if applied:
+            await _emit(s, "mega_updated")
+            await _emit(s, "sections_updated")  # refresh the edited section cards
+            await _emit(s, "progress", "✓ Fix applied — section updated above.")
+        await _emit(s, "qa_item_fixed", finding.get("id", ""))
+    except Exception as e:
+        log.exception("qa item fix failed")
+        finding["fix_status"] = "error"
+        s.error = str(e)
+        await _emit(s, "qa_item_fixed", finding.get("id", ""))
