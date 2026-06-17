@@ -49,19 +49,44 @@ class PartyChange:
 
 
 @dataclass
+class PartyQAChange:
+    """A round-table suggestion about the clarifying questions (step 2). Either a
+    new question to add, or a proposed answer to an existing one."""
+    id: str
+    kind: str           # add_question | suggest_answer
+    rationale: str = ""
+    status: str = "pending"  # pending | applied | denied
+    # add_question:
+    question: str = ""
+    assumption: str = ""
+    # suggest_answer:
+    target: int = -1    # 0-based index into Session.qas
+    answer: str = ""
+
+
+@dataclass
 class Session:
     id: str
     created: float
     idea: str = ""
+    project_type: str = ""
     stakes: str = ""
     form_factor: str = ""
+    repo_url: str = ""       # existing projects: link to the codebase
+    repo_context: str = ""   # fetched repo summary injected into drafting prompts
     qas: list[QA] = field(default_factory=list)
     sections: list[Section] = field(default_factory=list)
-    phase: str = "idea"  # idea | calibrate | clarify | sections | final
+    phase: str = "idea"  # idea | clarify | sections | final
     # Party mode (round-table review on the final spec).
+    auto_party: bool = False  # set by "Submit & Party": convene the round table once the draft lands
     party_status: str = "idle"  # idle | running | ready | error
     party_messages: list[PartyMessage] = field(default_factory=list)
     party_changes: list[PartyChange] = field(default_factory=list)
+    # Question-review party (step 2): suggested new questions / answers.
+    party_qa_changes: list[PartyQAChange] = field(default_factory=list)
+    # Post-processing QA (final page): on-demand LLM critique of the spec.
+    qa_review: list = field(default_factory=list)  # [{severity, category, text}]
+    qa_review_status: str = "idle"  # idle | running | ready | error
     # SSE fan-out: one queue per open /events connection. A single shared
     # queue silently splits events between stale and live connections.
     subscribers: list[asyncio.Queue] = field(default_factory=list)
@@ -72,6 +97,9 @@ class Session:
 
     def party_change(self, cid: str) -> "PartyChange | None":
         return next((c for c in self.party_changes if c.id == cid), None)
+
+    def party_qa_change(self, cid: str) -> "PartyQAChange | None":
+        return next((c for c in self.party_qa_changes if c.id == cid), None)
 
     def subscribe(self) -> asyncio.Queue:
         q: asyncio.Queue = asyncio.Queue()
