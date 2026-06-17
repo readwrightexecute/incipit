@@ -1,0 +1,33 @@
+You are doing a whole-spec consistency pass on an implementation brief (a
+"mega-prompt") before it goes to a coding agent. Read the ENTIRE spec and find
+places where sections CONTRADICT each other — a functional requirement that
+conflicts with a constraint, an acceptance criterion that conflicts with a
+requirement, a feature that violates a stated non-goal/out-of-scope item,
+mutually exclusive win/termination conditions, or a rule restated with diverging
+details across sections.
+
+Only cross-section contradictions matter here. Do not flag wording,
+style, gaps, or anything that is merely improvable — another pass handles those.
+
+THE SPEC
+========
+{{ spec }}
+
+SECTIONS YOU MAY EDIT (use the exact id)
+========================================
+{% for sec in sections %}- {{ sec.id }} — {{ sec.title }}
+{% endfor %}
+OUTPUT
+======
+For each contradiction, pick the ONE section to change so the spec becomes
+self-consistent (edit the side whose change best preserves the product intent;
+leave the other side alone). Output ONLY change blocks, one per contradiction,
+separated by a line of exactly three dashes, in this format and nothing else:
+
+SECTION: <one id from the list above>
+CHANGE: <a single imperative instruction telling an editor how to revise that section so it no longer contradicts the rest of the spec>
+WHY: <the contradiction being resolved — name both sides, e.g. "FR9 requires an ad SDK but NFR3 forbids all external data transmission">
+---
+
+Don't restate non-conflicting content. Edit only one side of each contradiction.
+If the spec is already self-consistent, output exactly: NO CHANGES.

@@ -10,7 +10,12 @@ FORM FACTOR: {{ form_factor }}
 SECTION TO REVISE: "{{ title }}"
 ================================
 {{ content }}
-
+{% if siblings %}
+OTHER SECTIONS OF THIS SPEC (read-only context — do NOT contradict them)
+========================================================================
+{% for sib in siblings %}--- {{ sib.title }} ---
+{{ sib.content }}
+{% endfor %}{% endif %}
 TASK
 ====
 {{ method_instruction }}
@@ -19,4 +24,7 @@ Apply the task to the section above and return the COMPLETE revised section
 body. Preserve every existing item, label, and detail that the task does not
 explicitly change — do NOT drop, summarize, or replace the rest of the section
 with only the changed part. Keep existing identifiers (e.g. FR1, NFR2) and their
-numbering. Output ONLY the section body — no heading, no preamble, no commentary.
+numbering.{% if siblings %} Your revision MUST stay consistent with the other
+sections shown above — do not introduce anything that contradicts them (a
+requirement vs a constraint, an acceptance criterion vs a feature, etc.).{% endif %}
+Output ONLY the section body — no heading, no preamble, no commentary.

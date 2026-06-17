@@ -253,10 +253,15 @@ async def run_single_section(s: Session, sid: str) -> None:
         await _emit(s, "section_error", sec.id)
 
 
-async def refine_section(s: Session, sec: Section, instruction: str) -> bool:
+async def refine_section(s: Session, sec: Section, instruction: str,
+                         *, siblings: list[Section] | None = None) -> bool:
     """Re-draft one section per a free-text instruction. Pushes the current
     content onto history (undo) and restores it on failure. Returns success.
-    Shared by manual refine and party-mode change application."""
+    Shared by manual refine and party-mode change application.
+
+    `siblings` (QA-fix path) passes the other sections as read-only context so
+    the revision stays consistent with the rest of the spec instead of fixing a
+    section in isolation and introducing a cross-section contradiction."""
     try:
         sec.history.append(sec.content)
         sec.status = "generating"
@@ -264,7 +269,9 @@ async def refine_section(s: Session, sec: Section, instruction: str) -> bool:
         tmpl = _jinja.get_template("refine.md.j2")
         prompt = tmpl.render(
             title=sec.title, content=sec.history[-1],
-            method_instruction=instruction, **_ctx(s),
+            method_instruction=instruction,
+            siblings=[{"title": x.title, "content": x.content} for x in (siblings or [])],
+            **_ctx(s),
         )
         sec.content = await _generate(s, prompt, label=f"Refining: {sec.title}")
         sec.status = "done"
@@ -845,6 +852,9 @@ async def run_qa_fix(s: Session) -> None:
             if f.get("fix_status") == "done":
                 continue
             await run_qa_fix_item(s, f)  # sets f running→done|noop|error, emits per-item
+        # Safety net: a whole-spec consistency pass to resolve any cross-section
+        # contradictions the per-finding fixes may have introduced.
+        await reconcile_spec(s)
         s.qa_fix_status = "ready"
         await _emit(s, "qa_fix_ready")
     except Exception as e:
@@ -869,7 +879,10 @@ async def run_qa_fix_item(s: Session, finding: dict) -> None:
         applied = 0
         for ch in changes:
             sec = s.section(ch.section_id)
-            if sec is not None and await refine_section(s, sec, ch.instruction):
+            if sec is None:
+                continue
+            siblings = [x for x in s.sections if x.id != sec.id]
+            if await refine_section(s, sec, ch.instruction, siblings=siblings):
                 applied += 1
         finding["fix_status"] = "done" if applied else "noop"
         if applied:
@@ -882,3 +895,33 @@ async def run_qa_fix_item(s: Session, finding: dict) -> None:
         finding["fix_status"] = "error"
         s.error = str(e)
         await _emit(s, "qa_item_fixed", finding.get("id", ""))
+
+
+async def reconcile_spec(s: Session) -> int:
+    """Whole-spec consistency pass. Reads the ENTIRE assembled spec at once,
+    finds places where sections contradict each other, and applies a per-section
+    edit (each cross-section aware) to resolve each conflict. Best-effort safety
+    net after a fix pass; returns the number of sections edited. Failures are
+    swallowed so they never fail the surrounding fix run."""
+    try:
+        prompt = _jinja.get_template("qa_reconcile.md.j2").render(
+            spec=assemble_final(s), sections=s.sections)
+        raw = await _generate(s, prompt, max_tokens=1200,
+                              label="Reconciling spec for consistency")
+        edited = 0
+        for ch in _parse_changes(s, raw):
+            sec = s.section(ch.section_id)
+            if sec is None:
+                continue
+            siblings = [x for x in s.sections if x.id != sec.id]
+            if await refine_section(s, sec, ch.instruction, siblings=siblings):
+                edited += 1
+        if edited:
+            await _emit(s, "mega_updated")
+            await _emit(s, "sections_updated")
+            await _emit(s, "progress",
+                        f"✓ Reconciled {edited} section{'' if edited == 1 else 's'} for consistency.")
+        return edited
+    except Exception:
+        log.exception("spec reconciliation failed")
+        return 0
