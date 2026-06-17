@@ -1,0 +1,27 @@
+<div id="party-panel">
+  {# Floating chat dock (fixed, bottom corner) — the live round-table transcript. #}
+  <div class="party-dock" id="party-dock">
+    <header class="party-dock-head">
+      <strong>🎉 Question review</strong>
+      <button type="button" class="party-dock-toggle"
+              onclick="document.getElementById('party-dock').classList.toggle('collapsed')"
+              title="Minimize / expand"></button>
+    </header>
+    <div class="party-dock-body">
+      <div id="party-turn" class="party-turn" sse-swap="party_turn"></div>
+      <div id="party-chat" class="chat" sse-swap="party_msg" hx-swap="beforeend">
+        {% include "partials/party_chat.html" %}
+      </div>
+    </div>
+  </div>
+
+  {# Suggested questions / answers render inline, to approve / deny. #}
+  <p class="assumption" style="margin-top:1rem">
+    🎉 The round table is reviewing your questions in the chat (corner). Suggested
+    questions and answers will appear here — approving drops them into the form above.
+  </p>
+  <div id="party-qa-changes"
+       hx-get="/sessions/{{ s.id }}/party-questions/changes"
+       hx-trigger="load, sse:party_ready, sse:party_changed, every 4s"
+       hx-swap="innerHTML"></div>
+</div>

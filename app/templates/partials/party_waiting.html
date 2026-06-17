@@ -1,0 +1,8 @@
+<div id="party-poll"
+     hx-get="/sessions/{{ s.id }}/party-when-ready"
+     hx-trigger="every 3s"
+     hx-target="#party-region" hx-swap="innerHTML">
+  <p class="assumption" style="margin-top:1rem">
+    <span class="spinner" data-anim="hearts"></span> The round table will convene once the draft is ready…
+  </p>
+</div>

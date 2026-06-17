@@ -1,0 +1,21 @@
+{% if s.party_status == 'running' %}
+{# still deliberating — suggestions appear once the group finishes #}
+{% elif s.party_qa_changes %}
+<div style="margin-top:1rem">
+  <header><strong>Suggested questions &amp; answers</strong> ({{ s.party_qa_changes|length }}) — from the round table</header>
+  {% set pending = s.party_qa_changes | selectattr('status', 'equalto', 'pending') | list %}
+  {% if pending %}
+  <p>
+    <button hx-post="/sessions/{{ s.id }}/party-questions/approve-all"
+            hx-target="#party-qa-changes" hx-swap="innerHTML">Approve all {{ pending|length }}</button>
+  </p>
+  {% endif %}
+  {% for ch in s.party_qa_changes %}
+  {% include "partials/party_qa_change_card.html" %}
+  {% endfor %}
+</div>
+{% elif s.party_status == 'ready' %}
+<p class="assumption" style="margin-top:1rem">The round table reviewed your questions and had nothing to add. 🎉</p>
+{% elif s.party_status == 'error' %}
+<p class="error" style="margin-top:1rem">Question review hit an error{% if s.error %}: {{ s.error }}{% endif %}. You can try again.</p>
+{% endif %}

@@ -16,4 +16,6 @@
 </div>
 {% elif s.party_status == 'ready' %}
 <p class="assumption" style="margin-top:1rem">The round table proposed no changes — your spec held up. 🎉</p>
+{% elif s.party_status == 'error' %}
+<p class="error" style="margin-top:1rem">Party mode hit an error{% if s.error %}: {{ s.error }}{% endif %}. You can try convening it again.</p>
 {% endif %}
