@@ -14,17 +14,7 @@ WHAT TO LOOK FOR
 - Scope creep / contradiction: items that conflict across sections, or
   requirements that restate something marked out of scope.
 - Gaps: an obviously needed concern for this kind of project that is absent.
-{% if prior %}
-PREVIOUSLY RAISED (a fix pass has since edited the spec to address these)
-========================================================================
-{% for p in prior %}- [{{ p.severity }}] {{ p.category }}: {{ p.text }}
-{% endfor %}
-Re-flag an item from this list ONLY if it is still genuinely unresolved in the
-spec above — quote the offending text. Do NOT re-raise an item that has been
-addressed, and do NOT reword a resolved item to keep it alive. Raise a NEW issue
-only if it is real and material, not a reach. If everything here is resolved and
-nothing new is material, output exactly: NO ISSUES.
-{% endif %}
+
 OUTPUT
 ======
 Output ONLY a flat checklist, one finding per line, most important first, in

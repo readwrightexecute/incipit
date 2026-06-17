@@ -84,7 +84,8 @@
     }
 
     /* ---- Terminal-style activity block (#status-bar at top, .terminal reusable) ---- */
-    #status-bar:empty { display: none; }
+    #status-bar:empty, #qa-console:empty { display: none; }
+    #qa-console { margin: .6rem 0 1rem; }
     .terminal, #status-bar {
       position: relative;
       padding: .6rem .9rem .6rem 2rem;
@@ -222,6 +223,8 @@
     /* After the sev-* rules so the resolved (success) state wins the specificity tie. */
     .qa-finding.is-fixed { border-color: color-mix(in srgb, var(--success) 55%, var(--pico-muted-border-color));
       background: color-mix(in srgb, var(--success) 8%, transparent); animation: fix-flash .6s ease-out; }
+    /* Verified-resolved findings recede; still-open ones keep their full weight + Fix button. */
+    .qa-finding.is-resolved { opacity: .55; border-color: color-mix(in srgb, var(--success) 45%, var(--pico-muted-border-color)); }
     @keyframes fix-flash { from { background: color-mix(in srgb, var(--success) 24%, transparent); } to { background: color-mix(in srgb, var(--success) 8%, transparent); } }
     @keyframes check-pop { from { transform: scale(.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
     /* Client-side history (home page) */

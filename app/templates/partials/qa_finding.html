@@ -1,6 +1,6 @@
 {# One QA-review finding with its own "Fix" control. Self-refreshes while a fix
    runs (sse:qa_item_fixed nudges it; every-2s is the reliable fallback). #}
-<div id="qf-{{ f.id }}" class="qa-finding sev-{{ f.severity }}{% if f.fix_status == 'running' %} is-fixing{% elif f.fix_status == 'done' %} is-fixed{% endif %}"
+<div id="qf-{{ f.id }}" class="qa-finding sev-{{ f.severity }}{% if f.verify == 'resolved' %} is-resolved{% elif f.fix_status == 'running' %} is-fixing{% elif f.fix_status == 'done' %} is-fixed{% endif %}"
      {% if f.fix_status == 'running' %}hx-get="/sessions/{{ s.id }}/qa-fix-item/{{ f.id }}"
      hx-trigger="sse:qa_item_fixed, every 2s" hx-swap="outerHTML"{% endif %}>
   <div class="qa-finding-body">
@@ -10,6 +10,13 @@
   <div class="qa-fix">
     {% if f.fix_status == 'running' %}
       <span class="qa-fix-state fixing"><span class="spinner" data-anim="diamonds" data-color="off"></span> Fixing…</span>
+    {% elif f.verify == 'resolved' %}
+      <span class="qa-fix-state done">✓ Resolved</span>
+    {% elif f.verify == 'open' %}
+      <span class="qa-fix-state noop">still open</span>
+      <button class="qa-fix-btn" hx-post="/sessions/{{ s.id }}/qa-fix-item/{{ f.id }}"
+              hx-target="#qf-{{ f.id }}" hx-swap="outerHTML"
+              title="Revise the relevant section to resolve this finding">🛠 Fix</button>
     {% elif f.fix_status == 'done' %}
       <span class="qa-fix-state done">✓ Fixed</span>
     {% elif f.fix_status == 'noop' %}

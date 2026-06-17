@@ -1,11 +1,13 @@
 <div id="qa-fix"
      {% if s.qa_fix_status == 'running' %}hx-get="/sessions/{{ s.id }}/qa-fix"
-     hx-trigger="sse:qa_fix_ready, every 10s" hx-swap="outerHTML"{% endif %}>
-  {# While running, the per-finding cards (above) carry the fixing → FIXED
-     animation and the top #status-bar is the single faux-terminal progress
-     line — so this region stays empty until the run finishes. #}
-  {% if s.qa_fix_status == 'ready' %}
-  <p style="color:var(--success)">✓ Fixes applied — your sections above are updated. Re-run QA from the bar below to verify.</p>
+     hx-trigger="sse:qa_fix_ready, every 30s" hx-swap="outerHTML"{% endif %}>
+  {# Live progress streams to the persistent #qa-console below the findings
+     (fix/verify/reconcile, channel qa_progress); this region shows the summary. #}
+  {% if s.qa_verify_status == 'ready' %}
+  {% set resolved = s.qa_review | selectattr('verify', 'equalto', 'resolved') | list | length %}
+  <p style="color:var(--success)">✓ Verified — {{ resolved }}/{{ s.qa_review | length }} resolved. Open items keep their 🛠 Fix button.</p>
+  {% elif s.qa_fix_status == 'ready' %}
+  <p style="color:var(--success)">✓ Fixes applied — your sections above are updated. Verify them from the bar below.</p>
   {% elif s.qa_fix_status == 'error' %}
   <p class="error">Couldn't apply the fixes{% if s.error %}: {{ s.error }}{% endif %}. You can try again.</p>
   {% endif %}

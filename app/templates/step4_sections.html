@@ -20,6 +20,12 @@
        hx-trigger="load, sse:job_done"
        hx-swap="innerHTML"></div>
 
+  {# Bottom console for QA fix / verify / reconcile progress. Present at load so
+     the SSE extension binds sse-swap here (it doesn't bind swapped-in elements);
+     hidden while empty. Keeps fix/reconcile progress next to the findings instead
+     of jumping to the top #status-bar. #}
+  <div id="qa-console" class="terminal" role="status" aria-live="polite" sse-swap="qa_progress"></div>
+
   <div id="party-region">
     {% if s.party_status != 'idle' %}{% include "partials/party_panel.html" %}{% endif %}
   </div>
@@ -27,6 +33,6 @@
   {# Fixed bottom bar; buttons appear/disappear as drafting completes. #}
   <div id="step3-actions"
        hx-get="/sessions/{{ s.id }}/step3-actions"
-       hx-trigger="load, sse:job_done, sse:qa_review_ready, sse:qa_fix_ready"
+       hx-trigger="load, sse:job_done, sse:qa_review_ready, sse:qa_fix_ready, sse:qa_verify_ready"
        hx-swap="innerHTML"></div>
 </div>

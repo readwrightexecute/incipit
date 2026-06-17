@@ -1,6 +1,6 @@
 <div id="qa-review"
-     {% if s.qa_review_status == 'running' %}hx-get="/sessions/{{ s.id }}/qa-review"
-     hx-trigger="sse:qa_review_ready, every 3s" hx-swap="outerHTML"{% endif %}>
+     {% if s.qa_review_status == 'running' or s.qa_verify_status == 'running' %}hx-get="/sessions/{{ s.id }}/qa-review"
+     hx-trigger="sse:qa_review_ready, sse:qa_verify_ready, every 30s" hx-swap="outerHTML"{% endif %}>
   {% if s.qa_review_status == 'running' %}
   <p><span class="spinner" data-anim="diamonds"></span> Reviewing the spec for ambiguity, testability, gaps…</p>
   {% elif s.qa_review_status == 'ready' %}
@@ -9,7 +9,7 @@
       {% for f in s.qa_review %}{% include "partials/qa_finding.html" %}{% endfor %}
     </div>
     <div id="qa-fix-region">
-      {% if s.qa_fix_status != 'idle' %}{% include "partials/qa_fix.html" %}{% endif %}
+      {% if s.qa_fix_status != 'idle' or s.qa_verify_status != 'idle' %}{% include "partials/qa_fix.html" %}{% endif %}
     </div>
     {% else %}
     <p class="assumption">The QA reviewer found no issues — the spec held up. 🎉</p>

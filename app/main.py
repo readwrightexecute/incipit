@@ -23,18 +23,19 @@ templates = Jinja2Templates(directory=_here / "templates")
 templates.env.globals["personas"] = flow.PERSONAS
 templates.env.globals["facilitator"] = flow.FACILITATOR
 
-FORM_FACTORS = ["web app", "CLI tool", "API/service", "mobile app"]
 PROJECT_TYPES = [
     ("new", "New project", "Greenfield — starting from scratch"),
     ("existing", "Existing codebase", "Adding to / changing something that exists"),
 ]
 # Stakes is no longer asked — every spec is calibrated as production-grade.
+# Form factor is no longer asked either — it's inferred from the idea (see
+# flow.run_clarify / _infer_calibration) so it can't contradict the spec.
 DEFAULT_STAKES = "serious"
 
 
 def _calibration_ctx() -> dict:
     """Option lists for the calibration controls on step 1."""
-    return {"form_factors": FORM_FACTORS, "project_types": PROJECT_TYPES}
+    return {"project_types": PROJECT_TYPES}
 
 
 def _render(name: str, request: Request, headers: dict | None = None, **ctx) -> HTMLResponse:
@@ -124,8 +125,7 @@ async def go_back(request: Request, sid: str, to: str):
         # Re-edit the brain dump with the prior inputs prefilled. (Submitting
         # again starts a fresh draft — accepted.)
         return _render("step1_idea.html", request, idea=s.idea, repo_url=s.repo_url,
-                       sel_project_type=s.project_type, sel_form_factor=s.form_factor,
-                       **_calibration_ctx())
+                       sel_project_type=s.project_type, **_calibration_ctx())
     if to == "clarify":
         s.phase = "clarify"
         return _render("resume.html", request, body="step3_clarify.html", s=s)
@@ -138,11 +138,11 @@ async def go_back(request: Request, sid: str, to: str):
 
 @app.post("/sessions", response_class=HTMLResponse)
 async def create_session(request: Request, idea: str = Form(...),
-                         project_type: str = Form(...), form_factor: str = Form(...),
-                         repo_url: str = Form("")):
+                         project_type: str = Form(...), repo_url: str = Form("")):
     s = state.create()
     s.idea = idea.strip()
-    s.project_type, s.form_factor, s.stakes = project_type, form_factor, DEFAULT_STAKES
+    # form_factor is inferred from the idea in run_clarify; stakes is fixed.
+    s.project_type, s.form_factor, s.stakes = project_type, "", DEFAULT_STAKES
     s.repo_url = repo_url.strip() if project_type == "existing" else ""
     s.phase = "clarify"
     asyncio.create_task(flow.run_clarify(s))
@@ -151,13 +151,12 @@ async def create_session(request: Request, idea: str = Form(...),
 
 @app.post("/moonshot", response_class=HTMLResponse)
 async def moonshot(request: Request, idea: str = Form(...),
-                   project_type: str = Form(""), form_factor: str = Form(""),
-                   repo_url: str = Form("")):
+                   project_type: str = Form(""), repo_url: str = Form("")):
     s = state.create()
     s.idea = idea.strip()
-    # Honor any explicit calibration the user set on step 1; run_moonshot
-    # infers whatever's left blank. Stakes is fixed to the default.
-    s.project_type, s.form_factor, s.stakes = project_type, form_factor, DEFAULT_STAKES
+    # Honor the project_type the user set on step 1; run_moonshot infers the
+    # rest (form factor always inferred now). Stakes is fixed to the default.
+    s.project_type, s.form_factor, s.stakes = project_type, "", DEFAULT_STAKES
     s.repo_url = repo_url.strip() if project_type == "existing" else ""
     s.phase = "moonshot"
     asyncio.create_task(flow.run_moonshot(s))
@@ -455,35 +454,32 @@ async def qa_panel(request: Request, sid: str):
     # Auto-run the deeper QA review once drafting is done (no click needed).
     drafting = any(sec.status != "done" for sec in s.sections)
     if s.sections and not drafting and s.qa_review_status == "idle":
-        s.qa_review_status = "running"
-        # Leave s.qa_review intact — run_qa_review reads it as "prior findings"
-        # then clears it; the running partial only shows a spinner anyway.
+        s.qa_review_status = "running"  # auto-run the deeper review once, on load
         asyncio.create_task(flow.run_qa_review(s))
     return _render("partials/qa_panel.html", request, s=s, lint=flow.lint_spec(s))
 
 
-@app.post("/sessions/{sid}/qa-review", response_class=HTMLResponse)
-async def qa_review_start(request: Request, sid: str):
-    s = state.get(sid)
-    if s is None:
-        return _render("expired.html", request)
-    if s.qa_review_status != "running":
-        # Flip to running synchronously so the returned partial renders the
-        # spinner + self-refresh attrs; otherwise the background task hasn't set
-        # the status yet and the panel comes back blank and inert.
-        s.qa_review_status = "running"
-        # Keep s.qa_review so run_qa_review can feed it back as prior findings
-        # (it clears it). The running partial renders only the spinner.
-        s.qa_fix_status = "idle"  # a fresh review supersedes any prior fix panel
-        asyncio.create_task(flow.run_qa_review(s))
-    return _render("partials/qa_review.html", request, s=s)
-
-
 @app.get("/sessions/{sid}/qa-review", response_class=HTMLResponse)
 async def qa_review_panel(request: Request, sid: str):
+    """Polled view of the QA panel — also the completion poll for the verify pass."""
     s = state.get(sid)
     if s is None:
         return HTMLResponse("")
+    return _render("partials/qa_review.html", request, s=s)
+
+
+@app.post("/sessions/{sid}/qa-verify", response_class=HTMLResponse)
+async def qa_verify_start(request: Request, sid: str):
+    """Convergent re-check: label each existing finding resolved/open. Replaces
+    the old open-ended 'Re-run QA' (which kept inventing new findings)."""
+    s = state.get(sid)
+    if s is None:
+        return _render("expired.html", request)
+    if s.qa_review and s.qa_verify_status != "running" and s.qa_fix_status != "running":
+        s.qa_verify_status = "running"  # synchronous so the returned partial shows it
+        for f in s.qa_review:
+            f["verify"] = None
+        asyncio.create_task(flow.run_qa_verify(s))
     return _render("partials/qa_review.html", request, s=s)
 
 
@@ -496,7 +492,7 @@ async def qa_fix_start(request: Request, sid: str):
         s.qa_fix_status = "running"  # set synchronously so the partial shows progress
         for f in s.qa_review:        # flip each unresolved finding to the fixing state
             if f.get("fix_status") != "done":
-                f["fix_status"] = "running"
+                f["fix_status"], f["verify"] = "running", None  # a new fix invalidates a stale verify
         asyncio.create_task(flow.run_qa_fix(s))
     # Re-render the whole review so every finding card picks up its fixing
     # animation (each self-refreshes to a green FIXED box as it completes).
@@ -522,7 +518,7 @@ async def qa_fix_item_start(request: Request, sid: str, fid: str):
     if f is None:
         return HTMLResponse("")
     if f.get("fix_status") != "running":
-        f["fix_status"] = "running"
+        f["fix_status"], f["verify"] = "running", None  # a new fix invalidates a stale verify
         asyncio.create_task(flow.run_qa_fix_item(s, f))
     return _render("partials/qa_finding.html", request, s=s, f=f)
 

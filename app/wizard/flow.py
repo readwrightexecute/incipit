@@ -82,9 +82,12 @@ async def _emit(s: Session, event: str, data: str = "") -> None:
 
 
 async def _generate(s: Session, prompt: str, max_tokens: int = 2048,
-                    label: str = "Working") -> str:
-    """One LLM call with a contextual progress/model-loading heartbeat."""
-    notify_task = asyncio.create_task(_heartbeat(s, label))
+                    label: str = "Working", channel: str = "progress") -> str:
+    """One LLM call with a contextual progress/model-loading heartbeat. `channel`
+    is the SSE event the heartbeat text rides on — default "progress" (top
+    #status-bar); QA fix/verify/reconcile pass "qa_progress" so their progress
+    shows in the bottom console near the findings instead of jumping to the top."""
+    notify_task = asyncio.create_task(_heartbeat(s, label, channel))
     try:
         return await backend.generate(prompt, system=SYSTEM, max_tokens=max_tokens)
     finally:
@@ -99,7 +102,7 @@ async def _generate(s: Session, prompt: str, max_tokens: int = 2048,
             await notify_task
         except asyncio.CancelledError:
             pass
-        await _emit(s, "progress", "")
+        await _emit(s, channel, "")
 
 
 def _anim_for(label: str) -> str:
@@ -116,7 +119,7 @@ def _anim_for(label: str) -> str:
     return "stars"
 
 
-async def _heartbeat(s: Session, label: str) -> None:
+async def _heartbeat(s: Session, label: str, channel: str = "progress") -> None:
     """Emit a live status line ('<label>… (Ns)') so the user always sees what
     is being generated and for how long — fires immediately, then every 5s."""
     try:
@@ -130,7 +133,7 @@ async def _heartbeat(s: Session, label: str) -> None:
                             f'<span class="spinner" data-anim="pulse"></span> Loading model '
                             f'(cold start, can take a minute)… ({elapsed}s)')
             else:
-                await _emit(s, "progress",
+                await _emit(s, channel,
                             f'<span class="spinner" data-anim="{anim}"></span> {label}… ({elapsed}s)')
             await asyncio.sleep(5)
     except asyncio.CancelledError:
@@ -160,6 +163,12 @@ def parse_questions(text: str) -> list[QA]:
 async def run_clarify(s: Session) -> None:
     try:
         await _emit(s, "job_started", "clarify")
+        # Form factor isn't asked in the UI anymore — infer it from the idea so
+        # the clarify/section prompts and final spec stay accurate and can't be
+        # contradicted by a stale calibration choice. (Reuses _infer_calibration;
+        # we adopt only its form-factor result, leaving stakes/project_type.)
+        if not s.form_factor:
+            s.form_factor = (await _infer_calibration(s))[1]
         await _ensure_repo_context(s)
         tmpl = _jinja.get_template("clarify.md.j2")
         prompt = tmpl.render(n_questions=N_QUESTIONS.get(s.stakes, 6), **_ctx(s))
@@ -254,7 +263,8 @@ async def run_single_section(s: Session, sid: str) -> None:
 
 
 async def refine_section(s: Session, sec: Section, instruction: str,
-                         *, siblings: list[Section] | None = None) -> bool:
+                         *, siblings: list[Section] | None = None,
+                         channel: str = "progress") -> bool:
     """Re-draft one section per a free-text instruction. Pushes the current
     content onto history (undo) and restores it on failure. Returns success.
     Shared by manual refine and party-mode change application.
@@ -273,7 +283,7 @@ async def refine_section(s: Session, sec: Section, instruction: str,
             siblings=[{"title": x.title, "content": x.content} for x in (siblings or [])],
             **_ctx(s),
         )
-        sec.content = await _generate(s, prompt, label=f"Refining: {sec.title}")
+        sec.content = await _generate(s, prompt, label=f"Refining: {sec.title}", channel=channel)
         sec.status = "done"
         await _emit(s, "section_done", sec.id)
         return True
@@ -809,8 +819,9 @@ def _parse_qa_review(raw: str) -> list[dict]:
         sev = "med" if sev == "medium" else sev
         body = m.group(2).strip()
         category, _, text = body.partition(":")
-        # id + fix_status drive the per-finding "Fix" control on the QA panel.
-        item = {"id": f"qf{len(out)}", "fix_status": "idle", "severity": sev}
+        # id + fix_status drive the per-finding "Fix" control; verify is set by
+        # the "Verify fixes" pass (None | "resolved" | "open").
+        item = {"id": f"qf{len(out)}", "fix_status": "idle", "verify": None, "severity": sev}
         if text:
             item["category"], item["text"] = category.strip(), text.strip()
         else:
@@ -820,16 +831,14 @@ def _parse_qa_review(raw: str) -> list[dict]:
 
 
 async def run_qa_review(s: Session) -> None:
-    """On-demand LLM critique of the assembled spec. On a re-run the previous
-    findings are fed back, so the reviewer only re-flags what's still genuinely
-    unresolved instead of re-raising addressed items (helps it converge)."""
+    """One-time LLM critique of the assembled spec (auto-run after drafting).
+    Re-running a fresh critique gave diminishing returns, so there's no manual
+    re-run — convergence is handled by the "Verify fixes" pass instead."""
     try:
-        prior = list(s.qa_review)  # last run's findings (empty on the first pass)
         s.qa_review_status = "running"
         s.qa_review = []
         await _emit(s, "qa_review_started")
-        prompt = _jinja.get_template("qa_review.md.j2").render(
-            spec=assemble_final(s), prior=prior)
+        prompt = _jinja.get_template("qa_review.md.j2").render(spec=assemble_final(s))
         raw = await _generate(s, prompt, max_tokens=900, label="Running QA review")
         s.qa_review = _parse_qa_review(raw)
         s.qa_review_status = "ready"
@@ -848,6 +857,7 @@ async def run_qa_fix(s: Session) -> None:
     fix). Already-fixed findings are skipped."""
     try:
         s.qa_fix_status = "running"
+        await _emit(s, "progress", "")  # clear the top bar; progress shows in #qa-console
         for f in list(s.qa_review):
             if f.get("fix_status") == "done":
                 continue
@@ -874,7 +884,8 @@ async def run_qa_fix_item(s: Session, finding: dict) -> None:
                f"{finding.get('category', '')}: {finding.get('text', '')}")
         prompt = _jinja.get_template("qa_fix.md.j2").render(
             spec=assemble_final(s), sections=s.sections, findings=one)
-        raw = await _generate(s, prompt, max_tokens=900, label="Fixing QA finding")
+        raw = await _generate(s, prompt, max_tokens=900,
+                              label="Fixing QA finding", channel="qa_progress")
         changes = _parse_changes(s, raw)
         applied = 0
         for ch in changes:
@@ -882,13 +893,13 @@ async def run_qa_fix_item(s: Session, finding: dict) -> None:
             if sec is None:
                 continue
             siblings = [x for x in s.sections if x.id != sec.id]
-            if await refine_section(s, sec, ch.instruction, siblings=siblings):
+            if await refine_section(s, sec, ch.instruction, siblings=siblings, channel="qa_progress"):
                 applied += 1
         finding["fix_status"] = "done" if applied else "noop"
         if applied:
             await _emit(s, "mega_updated")
             await _emit(s, "sections_updated")  # refresh the edited section cards
-            await _emit(s, "progress", "✓ Fix applied — section updated above.")
+            await _emit(s, "qa_progress", "✓ Fix applied — section updated above.")
         await _emit(s, "qa_item_fixed", finding.get("id", ""))
     except Exception as e:
         log.exception("qa item fix failed")
@@ -907,21 +918,64 @@ async def reconcile_spec(s: Session) -> int:
         prompt = _jinja.get_template("qa_reconcile.md.j2").render(
             spec=assemble_final(s), sections=s.sections)
         raw = await _generate(s, prompt, max_tokens=1200,
-                              label="Reconciling spec for consistency")
+                              label="Reconciling spec for consistency", channel="qa_progress")
         edited = 0
         for ch in _parse_changes(s, raw):
             sec = s.section(ch.section_id)
             if sec is None:
                 continue
             siblings = [x for x in s.sections if x.id != sec.id]
-            if await refine_section(s, sec, ch.instruction, siblings=siblings):
+            if await refine_section(s, sec, ch.instruction, siblings=siblings, channel="qa_progress"):
                 edited += 1
         if edited:
             await _emit(s, "mega_updated")
             await _emit(s, "sections_updated")
-            await _emit(s, "progress",
+            await _emit(s, "qa_progress",
                         f"✓ Reconciled {edited} section{'' if edited == 1 else 's'} for consistency.")
         return edited
     except Exception:
         log.exception("spec reconciliation failed")
         return 0
+
+
+_QA_VERIFY_RE = re.compile(r"^\s*(\d+)\s*[:.)\-]\s*(resolved|open)\b", re.I)
+
+
+async def run_qa_verify(s: Session) -> None:
+    """Convergent re-check of the EXISTING findings against the current spec —
+    labels each resolved/open, never invents new ones (so the list can only
+    shrink). Replaces the old open-ended "Re-run QA"."""
+    try:
+        s.qa_verify_status = "running"
+        await _emit(s, "progress", "")  # clear the top bar; progress shows in #qa-console
+        for f in s.qa_review:
+            f["verify"] = None
+        numbered = "\n".join(
+            f"{i + 1}. [{f.get('severity', '')}] {f.get('category', '')}: {f.get('text', '')}"
+            for i, f in enumerate(s.qa_review))
+        prompt = _jinja.get_template("qa_verify.md.j2").render(
+            spec=assemble_final(s), findings=numbered, n=len(s.qa_review))
+        raw = await _generate(s, prompt, max_tokens=700,
+                              label="Verifying fixes", channel="qa_progress")
+        for ln in raw.splitlines():
+            m = _QA_VERIFY_RE.match(ln)
+            if not m:
+                continue
+            idx = int(m.group(1)) - 1
+            if 0 <= idx < len(s.qa_review):
+                s.qa_review[idx]["verify"] = m.group(2).lower()
+        # Anything the model didn't explicitly clear stays "open" — never assume
+        # a fix landed without confirmation.
+        for f in s.qa_review:
+            if f.get("verify") is None:
+                f["verify"] = "open"
+        resolved = sum(1 for f in s.qa_review if f.get("verify") == "resolved")
+        s.qa_verify_status = "ready"
+        await _emit(s, "qa_progress",
+                    f"✓ Verified — {resolved}/{len(s.qa_review)} resolved.")
+        await _emit(s, "qa_verify_ready")
+    except Exception as e:
+        log.exception("qa verify failed")
+        s.qa_verify_status = "error"
+        s.error = str(e)
+        await _emit(s, "qa_verify_ready")
