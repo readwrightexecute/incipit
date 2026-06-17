@@ -53,11 +53,10 @@
     @keyframes bubble-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
     @keyframes cursor-blink { 50% { opacity: 0; } }
 
-    /* ---- Terminal-style activity block ---- */
+    /* ---- Terminal-style activity block (#status-bar at top, .terminal reusable) ---- */
     #status-bar:empty { display: none; }
-    #status-bar {
+    .terminal, #status-bar {
       position: relative;
-      margin-bottom: 1rem;
       padding: .6rem .9rem .6rem 2rem;
       font-family: var(--mono);
       font-size: .85rem; line-height: 1.55;
@@ -68,9 +67,11 @@
       box-shadow: inset 0 0 0 1px rgba(124, 92, 214, .06);
       white-space: pre-wrap; word-break: break-word;
     }
+    #status-bar { margin-bottom: 1rem; }
+    .terminal { margin-top: .6rem; }
     /* shell prompt + blinking block cursor */
-    #status-bar::before { content: "❯"; position: absolute; left: .85rem; color: var(--pico-primary); font-weight: 700; }
-    #status-bar::after { content: "▋"; margin-left: .15rem; color: var(--pico-primary); animation: cursor-blink 1.1s steps(1) infinite; }
+    .terminal::before, #status-bar::before { content: "❯"; position: absolute; left: .85rem; color: var(--pico-primary); font-weight: 700; }
+    .terminal::after, #status-bar::after { content: "▋"; margin-left: .15rem; color: var(--pico-primary); animation: cursor-blink 1.1s steps(1) infinite; }
     /* ---- Segmented button selectors (step 1 calibration) ---- */
     .seg-group { margin-bottom: 1.1rem; }
     /* Repo-link row only appears once "existing codebase" is selected. */

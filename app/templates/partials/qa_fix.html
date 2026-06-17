@@ -1,8 +1,8 @@
 <div id="qa-fix"
      {% if s.qa_fix_status == 'running' %}hx-get="/sessions/{{ s.id }}/qa-fix"
-     hx-trigger="sse:qa_fix_ready, every 3s" hx-swap="outerHTML"{% endif %}>
+     hx-trigger="sse:qa_fix_ready, every 10s" hx-swap="outerHTML"{% endif %}>
   {% if s.qa_fix_status == 'running' %}
-  <p><span class="spinner" data-anim="diamonds"></span> Implementing fixes — revising the flagged sections… <a href="#top">↑ jump to status</a></p>
+  <div class="terminal" sse-swap="progress"><span class="spinner" data-anim="diamonds"></span> Implementing fixes — revising the flagged sections…</div>
   {% elif s.qa_fix_status == 'ready' %}
   <p style="color:#38a169">✓ Fixes applied — your sections above are updated. Re-run QA from the bar below to verify.</p>
   {% elif s.qa_fix_status == 'error' %}
