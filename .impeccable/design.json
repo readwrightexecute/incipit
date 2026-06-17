@@ -1,0 +1,163 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-06-17T00:00:00Z",
+  "title": "Design System: Incipit",
+  "extensions": {
+    "colorMeta": {
+      "violet": {
+        "role": "primary",
+        "displayName": "Lumen Violet",
+        "canonical": "#bb9af7",
+        "tonalRamp": ["#221a35", "#2f2348", "#45336b", "#5d4690", "#7c5cd6", "#9a7ee6", "#bb9af7", "#d9c8ff"]
+      },
+      "violet-deep": {
+        "role": "primary",
+        "displayName": "Deep Violet",
+        "canonical": "#7c5cd6",
+        "tonalRamp": ["#1c1330", "#281a45", "#3a2666", "#523a99", "#7c5cd6", "#8d6ee6", "#a98ff0", "#cbb6ff"]
+      },
+      "bg": {
+        "role": "neutral",
+        "displayName": "Void",
+        "canonical": "#16161f",
+        "tonalRamp": ["#0b0b12", "#16161f", "#1e1f2e", "#2a2c3e", "#3a3d54", "#565a78", "#7e86ac", "#c6cbe3"]
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "Surface",
+        "canonical": "#1e1f2e",
+        "tonalRamp": ["#0b0b12", "#16161f", "#1e1f2e", "#2a2c3e", "#3a3d54", "#565a78", "#7e86ac", "#c6cbe3"]
+      },
+      "terminal-bg": {
+        "role": "neutral",
+        "displayName": "Terminal Black",
+        "canonical": "#0b0b12"
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Reading Violet",
+        "canonical": "#c6cbe3"
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "Muted Slate",
+        "canonical": "#7e86ac"
+      },
+      "danger":  { "role": "tertiary", "displayName": "Danger Red",    "canonical": "#f7768e" },
+      "warning": { "role": "tertiary", "displayName": "Warning Amber", "canonical": "#e0af68" },
+      "info":    { "role": "tertiary", "displayName": "Info Blue",     "canonical": "#7aa2f7" },
+      "success": { "role": "tertiary", "displayName": "Success Green", "canonical": "#9ece6a" }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "The 'Incipit' wordmark / page h1 only." },
+      "label":   { "displayName": "Mono Label", "purpose": "Step labels, severity tags, terminal text — the machine's voice." }
+    },
+    "shadows": [
+      { "name": "float",      "value": "0 12px 34px rgba(0,0,0,.5)",            "purpose": "The floating party-chat dock — a true overlay." },
+      { "name": "inset-glow", "value": "inset 0 0 0 1px rgba(124,92,214,.06)",  "purpose": "Faint violet inner edge on terminal blocks — atmosphere, not elevation." }
+    ],
+    "motion": [
+      { "name": "ease-quick",    "value": "120ms ease",       "purpose": "Border/background/box-shadow state transitions on seg-buttons, chips." },
+      { "name": "bubble-in",     "value": "250ms ease-out",   "purpose": "Chat bubble entrance (translateY 4px + opacity)." },
+      { "name": "cursor-blink",  "value": "1.1s steps(1) infinite", "purpose": "Terminal block cursor. Suppressed under prefers-reduced-motion." },
+      { "name": "pulse",         "value": "1.6s ease-in-out infinite", "purpose": "Active party-turn indicator. Suppressed under prefers-reduced-motion." }
+    ],
+    "breakpoints": [
+      { "name": "dock-sm",   "value": "600px" },
+      { "name": "bar-sm",    "value": "700px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The forward action on every step (Next, Approve, Copy).",
+      "html": "<button class=\"ds-btn-primary\">Next →</button>",
+      "css": ".ds-btn-primary { background: #7c5cd6; color: #fff; border: none; border-radius: 8px; padding: .75rem 1rem; font-weight: 600; cursor: pointer; transition: background .12s; } .ds-btn-primary:hover { background: #8d6ee6; } .ds-btn-primary:focus-visible { outline: 2px solid rgba(187,154,247,.35); outline-offset: 1px; }"
+    },
+    {
+      "name": "Segmented Selector",
+      "kind": "custom",
+      "refersTo": "seg-button-selected",
+      "description": "Radio-as-card calibration control; the whole card is the target.",
+      "html": "<label class=\"ds-seg-btn ds-seg-selected\"><span class=\"ds-seg-name\">New project</span><small class=\"ds-seg-hint\">starting from scratch</small></label>",
+      "css": ".ds-seg-btn { display: flex; flex-direction: column; gap: .1rem; padding: .55rem .85rem; cursor: pointer; background: #1a1b28; border: 1px solid #313450; border-radius: 8px; transition: border-color .12s, background .12s, box-shadow .12s; } .ds-seg-btn:hover { border-color: #bb9af7; } .ds-seg-selected { border-color: #bb9af7; background: rgba(187,154,247,.12); box-shadow: inset 0 0 0 1px #bb9af7; } .ds-seg-name { font-weight: 600; color: #c6cbe3; } .ds-seg-hint { color: #7e86ac; font-size: .75rem; }"
+    },
+    {
+      "name": "Example Chip",
+      "kind": "chip",
+      "refersTo": "chip",
+      "description": "Pill-shaped quick-pick for refine examples and history actions.",
+      "html": "<a class=\"ds-chip\">make it bolder</a>",
+      "css": ".ds-chip { display: inline-flex; align-items: center; font-size: .75rem; padding: .12rem .6rem; border: 1px solid #2a2c3e; border-radius: 999px; color: #7e86ac; text-decoration: none; cursor: pointer; transition: all .12s; } .ds-chip:hover { border-color: #bb9af7; color: #bb9af7; background: rgba(187,154,247,.08); }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Endpoint/idea fields; violet glow on focus.",
+      "html": "<input class=\"ds-input\" type=\"text\" placeholder=\"https://github.com/owner/repo\">",
+      "css": ".ds-input { background: #1a1b28; color: #c6cbe3; border: 1px solid #313450; border-radius: 8px; padding: .5rem .75rem; } .ds-input::placeholder { color: #7e86ac; } .ds-input:focus { outline: none; border-color: #bb9af7; box-shadow: 0 0 0 3px rgba(187,154,247,.35); }"
+    },
+    {
+      "name": "Terminal / Activity Block",
+      "kind": "custom",
+      "refersTo": "terminal-block",
+      "description": "Signature component — the machine narrating its own work via SSE.",
+      "html": "<div class=\"ds-terminal\" role=\"status\">Drafting section 3 of 6…</div>",
+      "css": ".ds-terminal { position: relative; padding: .6rem .9rem .6rem 2rem; font-family: 'Departure Mono', ui-monospace, Menlo, Consolas, monospace; font-size: .875rem; line-height: 1.55; color: #c8d3f5; background: #0b0b12; border: 1px solid #2a2c3e; border-radius: 8px; box-shadow: inset 0 0 0 1px rgba(124,92,214,.06); } .ds-terminal::before { content: '❯'; position: absolute; left: .85rem; color: #bb9af7; font-weight: 700; } .ds-terminal::after { content: '▋'; margin-left: .15rem; color: #bb9af7; animation: ds-blink 1.1s steps(1) infinite; } @keyframes ds-blink { 50% { opacity: 0; } } @media (prefers-reduced-motion: reduce) { .ds-terminal::after { animation: none; } }"
+    },
+    {
+      "name": "QA Finding (severity)",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Lint/review finding; severity reads as full border + tint + colored tag.",
+      "html": "<div class=\"ds-finding ds-sev-high\"><span class=\"ds-sev\">HIGH</span>Missing reduced-motion alternative.</div>",
+      "css": ".ds-finding { font-size: .875rem; padding: .4rem .6rem; border-radius: 8px; border: 1px solid #2a2c3e; color: #c6cbe3; } .ds-sev { font-family: 'Departure Mono', ui-monospace, monospace; font-size: .75rem; font-weight: 700; margin-right: .4rem; } .ds-sev-high { border-color: color-mix(in srgb, #f7768e 45%, #2a2c3e); background: color-mix(in srgb, #f7768e 8%, transparent); } .ds-sev-high .ds-sev { color: #f7768e; }"
+    },
+    {
+      "name": "Round-Table Dock Header",
+      "kind": "nav",
+      "refersTo": "button-primary",
+      "description": "Header of the floating chat dock during party review.",
+      "html": "<header class=\"ds-dock-head\"><strong>🎉 Round table</strong><button class=\"ds-dock-toggle\">▾</button></header>",
+      "css": ".ds-dock-head { display: flex; align-items: center; justify-content: space-between; gap: .5rem; padding: .45rem .7rem; background: #7c5cd6; color: #fff; border-radius: 8px 8px 0 0; } .ds-dock-head strong { color: #fff; } .ds-dock-toggle { background: transparent; border: 0; color: #fff; cursor: pointer; font-size: 1rem; line-height: 1; padding: 0 .25rem; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Lit Terminal",
+    "overview": "Incipit looks like a dark operator's console with the machine's work glowing through it. The surface is a near-black violet-tinted void; the one warm light is a soft violet glow from the top-right corner. Where the system is doing something, it speaks in a monospace terminal block with a ❯ prompt and a blinking cursor. The philosophy is transparency as craft: nothing hides behind a vague spinner. Density is deliberate and technical — a tool, not a landing page — spending its personality budget on a few committed moments rather than thin decoration.",
+    "keyCharacteristics": [
+      "Dark, violet-tinted void (#16161f) with a single corner glow as the only warmth.",
+      "One accent hue: violet (#bb9af7 / #7c5cd6). No competing brand colors.",
+      "Monospace (Departure Mono) reserved for the machine's voice.",
+      "Tonal layering, not shadows, for depth. Shadows only on things that float.",
+      "Tokyo Night status palette for state, never decoration."
+    ],
+    "rules": [
+      { "name": "The One Accent Rule", "body": "Violet is the only brand color. A second hue is only legal if it's a status color carrying actual state. Warmth comes from the corner glow and the violet, never a warm-tinted background.", "section": "colors" },
+      { "name": "The State-Color Rule", "body": "Red/amber/blue/green mean something happened. Forbidden as decoration, section accents, or palette variety.", "section": "colors" },
+      { "name": "The Two-Step Rule", "body": "UI text lives on exactly three sizes: 12px, 14px, 16px. Hierarchy is weight, color, and the heading scale — never a fourth in-between size.", "section": "typography" },
+      { "name": "The Mono-Means-Machine Rule", "body": "Departure Mono is reserved for the program's own voice. Don't set prose or buttons in mono for flavor.", "section": "typography" },
+      { "name": "The Flat-At-Rest Rule", "body": "Cards, findings, and inputs are flat with a 1px hairline. A drop shadow means it literally floats (dock, modal, sticky bar). A resting card with a shadow is a 2014 tell.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do keep violet the only accent; let the four status colors carry state and nothing else.",
+      "Do use the terminal block whenever the program is working — show the machine, don't mask it with a generic spinner.",
+      "Do layer with the Void → Surface → Terminal-Black tonal ramp; keep resting surfaces flat with a 1px hairline.",
+      "Do hold UI text to 12 / 14 / 16px and carry hierarchy with weight and color.",
+      "Do signal state with a full border + faint tint (and a label/icon), never color alone — keep it WCAG AA and colorblind-safe.",
+      "Do reserve Departure Mono for the machine's voice."
+    ],
+    "donts": [
+      "Don't ship the generic AI-SaaS look — no gradient text, hero-metric blocks, identical icon+heading card grids, or decorative glassmorphism.",
+      "Don't drift toward a corporate dashboard — no business-blue, heavy chrome, or admin-panel data-table density for its own sake.",
+      "Don't go childish — no mascots, cartoon illustration, or emoji as decoration (functional 🌙 🎉 ✓ are fine).",
+      "Don't use a border-left/right greater than 1px as a colored stripe; state reads as a full border + tint.",
+      "Don't put a drop shadow on a resting surface; if it isn't floating, it's flat.",
+      "Don't introduce a warm-tinted or cream background; the glow and the violet are the warmth.",
+      "Don't invent a fourth small font size or set body/buttons in mono for flavor."
+    ]
+  }
+}
