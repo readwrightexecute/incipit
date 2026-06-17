@@ -427,7 +427,7 @@ async def party_qa_approve_all(request: Request, sid: str):
 @app.get("/sessions/{sid}/sections-fragment", response_class=HTMLResponse)
 async def sections_fragment(request: Request, sid: str):
     """All section cards as a group — refetched after a background pass
-    (Implement fixes / party) rewrites sections, so the page updates without a reload."""
+    (party round table) rewrites sections, so the page updates without a reload."""
     s = state.get(sid)
     if s is None:
         return HTMLResponse("")
@@ -437,101 +437,11 @@ async def sections_fragment(request: Request, sid: str):
 
 @app.get("/sessions/{sid}/step3-actions", response_class=HTMLResponse)
 async def step3_actions(request: Request, sid: str):
-    """Step-3 bottom bar — Back during drafting, then +Review QA / Party / Finish."""
+    """Step-3 bottom bar — Back during drafting, then Party / Finish."""
     s = state.get(sid)
     if s is None:
         return HTMLResponse("")
     return _render("partials/step3_actions.html", request, s=s)
-
-
-@app.get("/sessions/{sid}/qa", response_class=HTMLResponse)
-async def qa_panel(request: Request, sid: str):
-    """QA panel shown at the end of step 3 — lint report + deeper-review trigger.
-    Loaded on page load and refreshed on sse:job_done (once drafting finishes)."""
-    s = state.get(sid)
-    if s is None:
-        return HTMLResponse("")
-    # Auto-run the deeper QA review once drafting is done (no click needed).
-    drafting = any(sec.status != "done" for sec in s.sections)
-    if s.sections and not drafting and s.qa_review_status == "idle":
-        s.qa_review_status = "running"  # auto-run the deeper review once, on load
-        asyncio.create_task(flow.run_qa_review(s))
-    return _render("partials/qa_panel.html", request, s=s, lint=flow.lint_spec(s))
-
-
-@app.get("/sessions/{sid}/qa-review", response_class=HTMLResponse)
-async def qa_review_panel(request: Request, sid: str):
-    """Polled view of the QA panel — also the completion poll for the verify pass."""
-    s = state.get(sid)
-    if s is None:
-        return HTMLResponse("")
-    return _render("partials/qa_review.html", request, s=s)
-
-
-@app.post("/sessions/{sid}/qa-verify", response_class=HTMLResponse)
-async def qa_verify_start(request: Request, sid: str):
-    """Convergent re-check: label each existing finding resolved/open. Replaces
-    the old open-ended 'Re-run QA' (which kept inventing new findings)."""
-    s = state.get(sid)
-    if s is None:
-        return _render("expired.html", request)
-    if s.qa_review and s.qa_verify_status != "running" and s.qa_fix_status != "running":
-        s.qa_verify_status = "running"  # synchronous so the returned partial shows it
-        for f in s.qa_review:
-            f["verify"] = None
-        asyncio.create_task(flow.run_qa_verify(s))
-    return _render("partials/qa_review.html", request, s=s)
-
-
-@app.post("/sessions/{sid}/qa-fix", response_class=HTMLResponse)
-async def qa_fix_start(request: Request, sid: str):
-    s = state.get(sid)
-    if s is None:
-        return _render("expired.html", request)
-    if s.qa_fix_status != "running":
-        s.qa_fix_status = "running"  # set synchronously so the partial shows progress
-        for f in s.qa_review:        # flip each unresolved finding to the fixing state
-            if f.get("fix_status") != "done":
-                f["fix_status"], f["verify"] = "running", None  # a new fix invalidates a stale verify
-        asyncio.create_task(flow.run_qa_fix(s))
-    # Re-render the whole review so every finding card picks up its fixing
-    # animation (each self-refreshes to a green FIXED box as it completes).
-    return _render("partials/qa_review.html", request, s=s)
-
-
-@app.get("/sessions/{sid}/qa-fix", response_class=HTMLResponse)
-async def qa_fix_panel(request: Request, sid: str):
-    s = state.get(sid)
-    if s is None:
-        return HTMLResponse("")
-    return _render("partials/qa_fix.html", request, s=s)
-
-
-@app.post("/sessions/{sid}/qa-fix-item/{fid}", response_class=HTMLResponse)
-async def qa_fix_item_start(request: Request, sid: str, fid: str):
-    """Fix one QA finding on its own. Flips fix_status synchronously so the
-    returned card renders the 'fixing…' state + self-refresh attrs."""
-    s = state.get(sid)
-    if s is None:
-        return _render("expired.html", request)
-    f = s.qa_finding(fid)
-    if f is None:
-        return HTMLResponse("")
-    if f.get("fix_status") != "running":
-        f["fix_status"], f["verify"] = "running", None  # a new fix invalidates a stale verify
-        asyncio.create_task(flow.run_qa_fix_item(s, f))
-    return _render("partials/qa_finding.html", request, s=s, f=f)
-
-
-@app.get("/sessions/{sid}/qa-fix-item/{fid}", response_class=HTMLResponse)
-async def qa_fix_item_panel(request: Request, sid: str, fid: str):
-    s = state.get(sid)
-    if s is None:
-        return HTMLResponse("")
-    f = s.qa_finding(fid)
-    if f is None:
-        return HTMLResponse("")
-    return _render("partials/qa_finding.html", request, s=s, f=f)
 
 
 @app.get("/sessions/{sid}/megaprompt", response_class=HTMLResponse)

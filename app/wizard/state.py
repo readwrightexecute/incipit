@@ -85,10 +85,6 @@ class Session:
     # Question-review party (step 2): suggested new questions / answers.
     party_qa_changes: list[PartyQAChange] = field(default_factory=list)
     # Post-processing QA (final page): on-demand LLM critique of the spec.
-    qa_review: list = field(default_factory=list)  # [{id, severity, category, text, fix_status, verify}]
-    qa_review_status: str = "idle"  # idle | running | ready | error
-    qa_fix_status: str = "idle"  # idle | running | ready | error — "implement fixes"
-    qa_verify_status: str = "idle"  # idle | running | ready | error — "verify fixes"
     # SSE fan-out: one queue per open /events connection. A single shared
     # queue silently splits events between stale and live connections.
     subscribers: list[asyncio.Queue] = field(default_factory=list)
@@ -102,9 +98,6 @@ class Session:
 
     def party_qa_change(self, cid: str) -> "PartyQAChange | None":
         return next((c for c in self.party_qa_changes if c.id == cid), None)
-
-    def qa_finding(self, fid: str) -> dict | None:
-        return next((f for f in self.qa_review if f.get("id") == fid), None)
 
     def subscribe(self) -> asyncio.Queue:
         q: asyncio.Queue = asyncio.Queue()

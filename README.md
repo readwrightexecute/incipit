@@ -67,23 +67,13 @@ as Markdown.
 
    Click any section to hand-edit it, or use the per-section **Refine** menu to
    have the model redo it (critique, identify risks, expand, simplify).
-4. **QA** — a deterministic lint plus an LLM critique run automatically once
-   drafting finishes, flagging ambiguity, untestable requirements, gaps, and
-   cross-section contradictions. From here you can:
-   - **🛠 Fix** a single finding — the relevant section is revised *with the
-     other sections as read-only context*, so the fix can't introduce a new
-     contradiction. The card animates **Fixing… → ✓ Fixed**.
-   - **🛠 Implement fixes** — fix every finding in turn, then run a **whole-spec
-     reconciliation pass** that reads the entire spec at once and resolves any
-     cross-section conflicts the per-finding edits introduced.
-   - **✔ Verify fixes** — a convergent re-check: it re-tests *only* the existing
-     findings against the current spec and marks each **resolved** or
-     **still-open**. It never invents new findings, so the list can only shrink.
-     (This replaces an older open-ended "re-run QA" that kept surfacing new nits.)
-5. **🎉 Party review** *(optional)* — convene a BMAD-style round table of personas
+4. **🎉 Party review** *(optional)* — convene a BMAD-style round table of personas
    + a facilitator that debate the spec (or, at step 2, your clarifying
    questions) to consensus and propose changes you approve or deny.
-6. **Finish** — copy or download the assembled mega-prompt.
+5. **Finish** — copy or download the assembled mega-prompt.
+
+> An automated QA / fix / verify pass is being reworked on the `qa-flow` branch
+> and is intentionally not part of this flow right now.
 
 **🌙 Shoot the Moon** runs the whole thing hands-off from just the idea: it
 infers the platform and details, takes the generated assumptions as answers,

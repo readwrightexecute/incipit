@@ -3,27 +3,7 @@
   <div class="bar-left">
     <a href="/sessions/{{ s.id }}/back/clarify" role="button" class="secondary outline">← Back</a>
   </div>
-  <div class="bar-center">
-    {% if not drafting %}
-      {% set busy = s.qa_fix_status == 'running' or s.qa_verify_status == 'running' %}
-      {% if s.qa_review_status == 'ready' and s.qa_review %}
-      <button class="secondary" hx-post="/sessions/{{ s.id }}/qa-fix"
-              hx-target="#qa-review-region" hx-swap="innerHTML"
-              title="Fix every flagged finding — each card resolves in turn"
-              {% if busy %}disabled{% endif %}>
-        🛠 Implement fixes
-      </button>
-      <button class="secondary" hx-post="/sessions/{{ s.id }}/qa-verify"
-              hx-target="#qa-review-region" hx-swap="innerHTML"
-              title="Re-check the flagged findings against the current spec — marks each resolved or still-open"
-              {% if busy %}disabled{% endif %}>
-        ✔ Verify fixes
-      </button>
-      {% else %}
-      <a href="#qa-section" role="button" class="secondary">Review QA ↓</a>
-      {% endif %}
-    {% endif %}
-  </div>
+  <div class="bar-center"></div>
   <div class="bar-right">
     {% if not drafting %}
     <button class="contrast" hx-post="/sessions/{{ s.id }}/party"
