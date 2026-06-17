@@ -174,28 +174,44 @@ This extension adds support for Server Sent Events to htmx.  See /www/extensions
 			var internalData = api.getInternalData(sourceElement);
 			var source = internalData.sseEventSource;
 
-			var sseEventName = api.getAttributeValue(child, "hx-trigger");
-			if (sseEventName == null) {
+			var triggerAttr = api.getAttributeValue(child, "hx-trigger");
+			if (triggerAttr == null) {
 				return;
 			}
 
-			// Only process hx-triggers for events with the "sse:" prefix
-			if (sseEventName.slice(0, 4) != "sse:") {
-				return;
-			}
-			
-			// remove the sse: prefix from here on out
-			sseEventName = sseEventName.substr(4);
-
-			var listener = function() {
-				if (maybeCloseSSESource(sourceElement)) {
-					return
+			// hx-trigger can list several triggers, e.g.
+			// "sse:questions_ready, sse:error, every 10s". Register a source
+			// listener for each "sse:<name>" token; non-sse triggers (polling,
+			// load, …) are left for htmx itself to handle. When the SSE event
+			// fires we dispatch the matching DOM event ("sse:<name>") on the
+			// element so htmx runs its hx-get/hx-post just like any other
+			// trigger. (The original code never registered a listener, so these
+			// triggers were dead and the app fell back to slow polling.)
+			triggerAttr.split(",").forEach(function(rawToken) {
+				var token = rawToken.trim();
+				if (token.slice(0, 4) !== "sse:") {
+					return;
+				}
+				// bare event name; drop any trailing htmx modifiers after space
+				var sseEventName = token.substr(4).split(/\s+/)[0];
+				if (!sseEventName) {
+					return;
 				}
 
-				if (!api.bodyContains(child)) {
-					source.removeEventListener(sseEventName, listener);
-				}
-			}
+				var listener = function() {
+					if (maybeCloseSSESource(sourceElement)) {
+						return;
+					}
+					if (!api.bodyContains(child)) {
+						source.removeEventListener(sseEventName, listener);
+						return;
+					}
+					api.triggerEvent(child, "sse:" + sseEventName);
+				};
+
+				api.getInternalData(child).sseEventListener = listener;
+				source.addEventListener(sseEventName, listener);
+			});
 		});
 	}
 
