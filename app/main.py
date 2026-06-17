@@ -24,15 +24,26 @@ templates.env.globals["personas"] = flow.PERSONAS
 templates.env.globals["facilitator"] = flow.FACILITATOR
 
 FORM_FACTORS = ["web app", "CLI tool", "API/service", "mobile app"]
-STAKES = [
-    ("hobby", "Hobby", "Personal project, keep it lean"),
-    ("internal", "Internal", "A few people will depend on it"),
-    ("serious", "Serious", "Production-grade, real stakes"),
+PROJECT_TYPES = [
+    ("new", "New project", "Greenfield — starting from scratch"),
+    ("existing", "Existing codebase", "Adding to / changing something that exists"),
 ]
+# Stakes is no longer asked — every spec is calibrated as production-grade.
+DEFAULT_STAKES = "serious"
+
+
+def _calibration_ctx() -> dict:
+    """Option lists for the calibration controls on step 1."""
+    return {"form_factors": FORM_FACTORS, "project_types": PROJECT_TYPES}
 
 
 def _render(name: str, request: Request, headers: dict | None = None, **ctx) -> HTMLResponse:
     return templates.TemplateResponse(request, name, ctx, headers=headers)
+
+
+def _html(name: str, **ctx) -> str:
+    """Render a partial to a string (for concatenating OOB swaps in one response)."""
+    return templates.env.get_template(name).render(**ctx)
 
 
 def _push(s) -> dict:
@@ -81,7 +92,7 @@ async def settings_models(request: Request, base_url: str = "", api_key: str = "
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
-    return _render("step1_idea.html", request)
+    return _render("step1_idea.html", request, **_calibration_ctx())
 
 
 @app.get("/sessions/{sid}", response_class=HTMLResponse)
@@ -90,35 +101,42 @@ async def resume(request: Request, sid: str):
     s = state.get(sid)
     if s is None:
         return _render("resume.html", request, body="expired.html", s=None)
-    if s.phase == "calibrate":
-        return _render("resume.html", request, body="step2_calibrate.html",
-                       s=s, stakes=STAKES, form_factors=FORM_FACTORS)
     if s.phase == "clarify":
         return _render("resume.html", request, body="step3_clarify.html", s=s)
     if s.phase == "sections":
         return _render("resume.html", request, body="step4_sections.html",
-                       s=s, examples=flow.REFINE_EXAMPLES)
+                       s=s, examples=flow.REFINE_EXAMPLES, auto_party=s.auto_party)
     if s.phase == "moonshot":
         return _render("resume.html", request, body="step_moonshot.html", s=s)
     if s.phase == "final":
         return _render("step6_final.html", request, s=s,
-                       mega_prompt=flow.assemble_final(s))
-    return _render("step1_idea.html", request)
+                       mega_prompt=flow.assemble_final(s), lint=flow.lint_spec(s))
+    return _render("step1_idea.html", request, **_calibration_ctx())
 
 
 @app.post("/sessions", response_class=HTMLResponse)
-async def create_session(request: Request, idea: str = Form(...)):
+async def create_session(request: Request, idea: str = Form(...),
+                         project_type: str = Form(...), form_factor: str = Form(...),
+                         repo_url: str = Form("")):
     s = state.create()
     s.idea = idea.strip()
-    s.phase = "calibrate"
-    return _render("step2_calibrate.html", request, headers=_push(s), s=s,
-                   stakes=STAKES, form_factors=FORM_FACTORS)
+    s.project_type, s.form_factor, s.stakes = project_type, form_factor, DEFAULT_STAKES
+    s.repo_url = repo_url.strip() if project_type == "existing" else ""
+    s.phase = "clarify"
+    asyncio.create_task(flow.run_clarify(s))
+    return _render("step3_clarify.html", request, headers=_push(s), s=s)
 
 
 @app.post("/moonshot", response_class=HTMLResponse)
-async def moonshot(request: Request, idea: str = Form(...)):
+async def moonshot(request: Request, idea: str = Form(...),
+                   project_type: str = Form(""), form_factor: str = Form(""),
+                   repo_url: str = Form("")):
     s = state.create()
     s.idea = idea.strip()
+    # Honor any explicit calibration the user set on step 1; run_moonshot
+    # infers whatever's left blank. Stakes is fixed to the default.
+    s.project_type, s.form_factor, s.stakes = project_type, form_factor, DEFAULT_STAKES
+    s.repo_url = repo_url.strip() if project_type == "existing" else ""
     s.phase = "moonshot"
     asyncio.create_task(flow.run_moonshot(s))
     return _render("step_moonshot.html", request, headers=_push(s), s=s)
@@ -134,17 +152,6 @@ async def moon_status(sid: str):
     if s.phase == "final" or (s.error and s.phase != "moonshot"):
         return Response(status_code=204, headers={"HX-Redirect": f"/sessions/{sid}"})
     return Response(status_code=204)
-
-
-@app.post("/sessions/{sid}/calibrate", response_class=HTMLResponse)
-async def calibrate(request: Request, sid: str,
-                    stakes: str = Form(...), form_factor: str = Form(...)):
-    s = state.get(sid)
-    if s is None:
-        return _render("expired.html", request)
-    s.stakes, s.form_factor = stakes, form_factor
-    asyncio.create_task(flow.run_clarify(s))
-    return _render("step3_clarify.html", request, headers=_push(s), s=s)
 
 
 @app.get("/sessions/{sid}/questions", response_class=HTMLResponse)
@@ -163,10 +170,12 @@ async def answers(request: Request, sid: str):
     form = await request.form()
     for i, qa in enumerate(s.qas):
         qa.answer = str(form.get(f"answer_{i}", "")).strip()
+    # "Submit & Party" sets party=1: convene the round table once the draft lands.
+    s.auto_party = bool(form.get("party"))
     flow.init_sections(s)
     asyncio.create_task(flow.run_sections(s))
     return _render("step4_sections.html", request, headers=_push(s), s=s,
-                   examples=flow.REFINE_EXAMPLES)
+                   examples=flow.REFINE_EXAMPLES, auto_party=s.auto_party)
 
 
 @app.get("/sessions/{sid}/sections/{section_id}", response_class=HTMLResponse)
@@ -251,6 +260,20 @@ async def party_panel(request: Request, sid: str):
     return _render("partials/party_panel.html", request, s=s)
 
 
+@app.get("/sessions/{sid}/party-when-ready", response_class=HTMLResponse)
+async def party_when_ready(request: Request, sid: str):
+    """Poller target for the clarify-step 'Submit & Party' path: returns the
+    party panel once the round table is active, otherwise the waiting card
+    (which keeps polling). hx-trigger='sse:...' is inert in the vendored sse.js,
+    so the panel can't appear via SSE — this 3s poll swaps it in instead."""
+    s = state.get(sid)
+    if s is None:
+        return HTMLResponse("")
+    if s.party_status != "idle":
+        return _render("partials/party_panel.html", request, s=s)
+    return _render("partials/party_waiting.html", request, s=s)
+
+
 @app.get("/sessions/{sid}/party/chat", response_class=HTMLResponse)
 async def party_chat(request: Request, sid: str):
     s = state.get(sid)
@@ -311,6 +334,91 @@ async def party_approve_all(request: Request, sid: str):
     if pending:
         asyncio.create_task(flow.apply_party_changes(s, pending))
     return _render("partials/party_changes.html", request, s=s)
+
+
+# ---- Question-review party (step 2) ----
+
+@app.post("/sessions/{sid}/party-questions", response_class=HTMLResponse)
+async def party_questions_start(request: Request, sid: str):
+    s = state.get(sid)
+    if s is None:
+        return _render("expired.html", request)
+    if s.party_status != "running":
+        asyncio.create_task(flow.run_party_questions(s))
+    return _render("partials/party_qa_panel.html", request, s=s)
+
+
+@app.get("/sessions/{sid}/party-questions/panel", response_class=HTMLResponse)
+async def party_questions_panel(request: Request, sid: str):
+    s = state.get(sid)
+    if s is None:
+        return HTMLResponse("")
+    return _render("partials/party_qa_panel.html", request, s=s)
+
+
+@app.get("/sessions/{sid}/party-questions/changes", response_class=HTMLResponse)
+async def party_questions_changes(request: Request, sid: str):
+    s = state.get(sid)
+    if s is None:
+        return HTMLResponse("")
+    return _render("partials/party_qa_changes.html", request, s=s)
+
+
+@app.post("/sessions/{sid}/party-questions/changes/{cid}/approve", response_class=HTMLResponse)
+async def party_qa_approve(request: Request, sid: str, cid: str):
+    s = state.get(sid)
+    if s is None:
+        return _render("expired.html", request)
+    await flow.apply_qa_change(s, cid)
+    # Updated card (primary swap) + an out-of-band refresh of the questions form
+    # so the new question / filled answer shows immediately.
+    card = _html("partials/party_qa_change_card.html", s=s, ch=s.party_qa_change(cid))
+    qlist = _html("partials/question_list.html", s=s, oob=True)
+    return HTMLResponse(card + qlist)
+
+
+@app.post("/sessions/{sid}/party-questions/changes/{cid}/deny", response_class=HTMLResponse)
+async def party_qa_deny(request: Request, sid: str, cid: str):
+    s = state.get(sid)
+    if s is None:
+        return _render("expired.html", request)
+    ch = s.party_qa_change(cid)
+    if ch is not None and ch.status == "pending":
+        ch.status = "denied"
+    return _render("partials/party_qa_change_card.html", request, s=s, ch=ch)
+
+
+@app.post("/sessions/{sid}/party-questions/approve-all", response_class=HTMLResponse)
+async def party_qa_approve_all(request: Request, sid: str):
+    s = state.get(sid)
+    if s is None:
+        return _render("expired.html", request)
+    for ch in list(s.party_qa_changes):
+        if ch.status == "pending":
+            await flow.apply_qa_change(s, ch.id)
+    changes = _html("partials/party_qa_changes.html", s=s)
+    qlist = _html("partials/question_list.html", s=s, oob=True)
+    return HTMLResponse(changes + qlist)
+
+
+# ---- Post-processing QA (final page) ----
+
+@app.post("/sessions/{sid}/qa-review", response_class=HTMLResponse)
+async def qa_review_start(request: Request, sid: str):
+    s = state.get(sid)
+    if s is None:
+        return _render("expired.html", request)
+    if s.qa_review_status != "running":
+        asyncio.create_task(flow.run_qa_review(s))
+    return _render("partials/qa_review.html", request, s=s)
+
+
+@app.get("/sessions/{sid}/qa-review", response_class=HTMLResponse)
+async def qa_review_panel(request: Request, sid: str):
+    s = state.get(sid)
+    if s is None:
+        return HTMLResponse("")
+    return _render("partials/qa_review.html", request, s=s)
 
 
 @app.get("/sessions/{sid}/megaprompt", response_class=HTMLResponse)
