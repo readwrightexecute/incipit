@@ -199,6 +199,13 @@
     .history-modal { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center;
       justify-content: center; padding: 1rem; z-index: 50; }
     .history-modal > article { max-width: 760px; width: 100%; margin: 0; }
+    /* Touch targets: keep the compact desktop look, but guarantee a ≥44px
+       hit area on touch/coarse pointers for the small chips & icon buttons. */
+    @media (pointer: coarse) {
+      .ex-chip, .hist-actions a, .hist-actions button, .party-dock-toggle {
+        min-height: 44px; display: inline-flex; align-items: center; justify-content: center;
+      }
+    }
   </style>
 </head>
 <body>
