@@ -815,6 +815,7 @@ async def run_qa_review(s: Session) -> None:
         raw = await _generate(s, prompt, max_tokens=900, label="Running QA review")
         s.qa_review = _parse_qa_review(raw)
         s.qa_review_status = "ready"
+        await _emit(s, "progress", "✓ QA review complete — findings below.")
         await _emit(s, "qa_review_ready")
     except Exception as e:
         log.exception("qa review failed")
@@ -842,6 +843,7 @@ async def run_qa_fix(s: Session) -> None:
         s.qa_fix_status = "ready"
         await _emit(s, "mega_updated")
         await _emit(s, "sections_updated")  # refresh the section cards on step 3
+        await _emit(s, "progress", "✓ Fixes applied — sections updated above.")
         await _emit(s, "qa_fix_ready")
     except Exception as e:
         log.exception("qa fix failed")

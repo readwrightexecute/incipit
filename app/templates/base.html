@@ -132,10 +132,11 @@
     @media (max-width: 600px) { .party-dock { right: .5rem; left: .5rem; width: auto; } }
     /* Fixed bottom action bar (per-step next-step / party buttons) */
     .action-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 45;
-      display: flex; flex-wrap: wrap; gap: .5rem; justify-content: center; align-items: center;
+      display: flex; flex-wrap: wrap; gap: .5rem; justify-content: flex-end; align-items: center;
       padding: .6rem 1rem; background: rgba(20, 20, 31, .92); backdrop-filter: blur(6px);
       border-top: 1px solid var(--pico-card-border-color); }
     .action-bar button, .action-bar a[role="button"] { margin-bottom: 0; width: auto; }
+    .action-bar .bar-back { margin-right: auto; } /* Back pinned far-left; forward action stays rightmost */
     .action-bar .bar-note { flex-basis: 100%; text-align: center; margin: 0 0 .1rem; }
     main.container { padding-bottom: 5.5rem; } /* clear the fixed action bar */
     .final-actions { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; }

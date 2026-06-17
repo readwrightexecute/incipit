@@ -17,7 +17,7 @@
     </label>
     {% endfor %}
     <div class="action-bar">
-      <button type="submit">Draft the spec →</button>
+      <a href="/sessions/{{ s.id }}/back/idea" role="button" class="secondary outline bar-back">← Back</a>
       <button type="button" class="contrast"
               hx-post="/sessions/{{ s.id }}/party-questions"
               hx-target="#qa-party-region" hx-swap="innerHTML"
@@ -25,6 +25,7 @@
               title="Have the BMAD round table review these questions and suggest additions / answers">
         🎉 Party: review questions
       </button>
+      <button type="submit">Draft the spec →</button>
     </div>
   </form>
 </div>

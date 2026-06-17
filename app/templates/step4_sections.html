@@ -4,8 +4,7 @@
   <div id="status-bar" sse-swap="model_loading,progress,error"></div>
 
   {# Section cards. Refetched as a group when a background pass (Implement
-     fixes / party) rewrites sections — sse:sections_updated fires only then,
-     so live drafting (per-card refresh) is untouched. #}
+     fixes / party) rewrites sections — sse:sections_updated fires only then. #}
   <div id="sections"
        hx-get="/sessions/{{ s.id }}/sections-fragment"
        hx-trigger="sse:sections_updated"
@@ -25,13 +24,9 @@
     {% if s.party_status != 'idle' %}{% include "partials/party_panel.html" %}{% endif %}
   </div>
 
-  <div class="action-bar">
-    <button class="contrast" hx-post="/sessions/{{ s.id }}/party"
-            hx-target="#party-region" hx-swap="innerHTML"
-            title="Convene the BMAD round table to review and refine these sections"
-            {% if s.party_status == 'running' %}disabled{% endif %}>
-      🎉 Party review
-    </button>
-    <a href="/sessions/{{ s.id }}/final" role="button">Finish →</a>
-  </div>
+  {# Fixed bottom bar; buttons appear/disappear as drafting completes. #}
+  <div id="step3-actions"
+       hx-get="/sessions/{{ s.id }}/step3-actions"
+       hx-trigger="load, sse:job_done"
+       hx-swap="innerHTML"></div>
 </div>

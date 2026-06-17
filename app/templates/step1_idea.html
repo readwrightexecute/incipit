@@ -4,14 +4,15 @@
 <form hx-target="#wizard" hx-swap="innerHTML">
   <label for="idea">What do you want to build, and why?</label>
   <textarea id="idea" name="idea" required
-    placeholder="Dump everything: the idea, who it's for, what problem it solves, anything you already know you want or don't want. Rough is fine."></textarea>
+    placeholder="Dump everything: the idea, who it's for, what problem it solves, anything you already know you want or don't want. Rough is fine.">{{ idea|default('') }}</textarea>
 
   <div class="seg-group">
     <p class="seg-legend">Is this a new project or an existing codebase?</p>
     <div class="seg">
       {% for value, label, hint in project_types %}
       <label class="seg-btn" title="{{ hint }}">
-        <input type="radio" name="project_type" value="{{ value }}" {% if loop.first %}checked{% endif %}>
+        <input type="radio" name="project_type" value="{{ value }}"
+               {% if value == (sel_project_type or project_types[0][0]) %}checked{% endif %}>
         <span class="seg-name">{{ label }}</span>
         <small class="seg-hint">{{ hint }}</small>
       </label>
@@ -21,7 +22,7 @@
 
   <div id="repo-row" class="seg-group">
     <label for="repo_url" class="seg-legend">Repo link <small class="seg-hint" style="font-weight:400">— so the spec fits your existing codebase</small></label>
-    <input type="url" id="repo_url" name="repo_url" placeholder="https://github.com/owner/repo">
+    <input type="url" id="repo_url" name="repo_url" value="{{ repo_url|default('') }}" placeholder="https://github.com/owner/repo">
     <small class="assumption">We fetch the README + structure and feed a summary into drafting. Public GitHub works best; leave blank to skip.</small>
   </div>
 
@@ -30,7 +31,8 @@
     <div class="seg">
       {% for ff in form_factors %}
       <label class="seg-btn">
-        <input type="radio" name="form_factor" value="{{ ff }}" {% if loop.first %}checked{% endif %}>
+        <input type="radio" name="form_factor" value="{{ ff }}"
+               {% if ff == (sel_form_factor or form_factors[0]) %}checked{% endif %}>
         <span class="seg-name">{{ ff }}</span>
       </label>
       {% endfor %}
@@ -44,11 +46,11 @@
     and refine afterward.
   </small>
   <div class="action-bar">
-    <button type="submit" hx-post="/sessions">Next →</button>
     <button type="submit" class="contrast" hx-post="/moonshot"
             title="Run the whole process automatically with smart-default answers and a BMAD round table">
       🌙 Shoot the Moon
     </button>
+    <button type="submit" hx-post="/sessions">Next →</button>
   </div>
 </form>
 <div id="history"></div>

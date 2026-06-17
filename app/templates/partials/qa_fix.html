@@ -4,7 +4,11 @@
   {% if s.qa_fix_status == 'running' %}
   <p><span class="spinner" data-anim="diamonds"></span> Implementing fixes — revising the flagged sections… <a href="#top">↑ jump to status</a></p>
   {% elif s.qa_fix_status == 'ready' %}
-  <p style="color:#38a169">✓ Fixes applied — your sections above are updated. Re-run QA to verify, or Finish → for your updated Super-Prompt.</p>
+  <p style="color:#38a169">✓ Fixes applied — your sections above are updated.</p>
+  <p style="margin:.4rem 0 0">
+    <button class="secondary" hx-post="/sessions/{{ s.id }}/qa-review"
+            hx-target="#qa-review-region" hx-swap="innerHTML">Re-run QA</button>
+  </p>
   {% elif s.qa_fix_status == 'error' %}
   <p class="error">Couldn't apply the fixes{% if s.error %}: {{ s.error }}{% endif %}. You can try again.</p>
   {% endif %}

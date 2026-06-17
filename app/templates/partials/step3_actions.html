@@ -1,0 +1,14 @@
+{% set drafting = s.sections | rejectattr('status', 'equalto', 'done') | list %}
+<div class="action-bar">
+  <a href="/sessions/{{ s.id }}/back/clarify" role="button" class="secondary outline bar-back">← Back</a>
+  {% if not drafting %}
+  <a href="#qa-section" role="button" class="secondary">Review QA ↓</a>
+  <button class="contrast" hx-post="/sessions/{{ s.id }}/party"
+          hx-target="#party-region" hx-swap="innerHTML"
+          title="Convene the BMAD round table to review and refine these sections"
+          {% if s.party_status == 'running' %}disabled{% endif %}>
+    🎉 Party review
+  </button>
+  <a href="/sessions/{{ s.id }}/final" role="button">Finish →</a>
+  {% endif %}
+</div>

@@ -114,6 +114,28 @@ async def resume(request: Request, sid: str):
     return _render("step1_idea.html", request, **_calibration_ctx())
 
 
+@app.get("/sessions/{sid}/back/{to}", response_class=HTMLResponse)
+async def go_back(request: Request, sid: str, to: str):
+    """Same-session back navigation; work is preserved."""
+    s = state.get(sid)
+    if s is None:
+        return _render("resume.html", request, body="expired.html", s=None)
+    if to == "idea":
+        # Re-edit the brain dump with the prior inputs prefilled. (Submitting
+        # again starts a fresh draft — accepted.)
+        return _render("step1_idea.html", request, idea=s.idea, repo_url=s.repo_url,
+                       sel_project_type=s.project_type, sel_form_factor=s.form_factor,
+                       **_calibration_ctx())
+    if to == "clarify":
+        s.phase = "clarify"
+        return _render("resume.html", request, body="step3_clarify.html", s=s)
+    if to == "sections":
+        s.phase = "sections"
+        return _render("resume.html", request, body="step4_sections.html",
+                       s=s, examples=flow.REFINE_EXAMPLES, auto_party=s.auto_party)
+    return _render("resume.html", request, body="expired.html", s=None)
+
+
 @app.post("/sessions", response_class=HTMLResponse)
 async def create_session(request: Request, idea: str = Form(...),
                          project_type: str = Form(...), form_factor: str = Form(...),
@@ -412,6 +434,15 @@ async def sections_fragment(request: Request, sid: str):
         return HTMLResponse("")
     return _render("partials/sections_list.html", request, s=s,
                    examples=flow.REFINE_EXAMPLES)
+
+
+@app.get("/sessions/{sid}/step3-actions", response_class=HTMLResponse)
+async def step3_actions(request: Request, sid: str):
+    """Step-3 bottom bar — Back during drafting, then +Review QA / Party / Finish."""
+    s = state.get(sid)
+    if s is None:
+        return HTMLResponse("")
+    return _render("partials/step3_actions.html", request, s=s)
 
 
 @app.get("/sessions/{sid}/qa", response_class=HTMLResponse)
