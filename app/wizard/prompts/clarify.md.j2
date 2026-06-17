@@ -3,9 +3,13 @@ A user wants to build the following:
 IDEA:
 {{ idea }}
 
+PROJECT TYPE: {{ project_type }} ({{ project_type_hint }})
 STAKES: {{ stakes }} ({{ stakes_hint }})
 FORM FACTOR: {{ form_factor }}
-
+{% if repo_context %}
+EXISTING CODEBASE CONTEXT (summary of {{ repo_url }} — ask questions that fit this real codebase, not a greenfield one):
+{{ repo_context }}
+{% endif %}
 Generate the {{ n_questions }} most important clarifying questions whose answers would most change how this gets built. For each question, also provide a sensible default answer prefixed with [ASSUMPTION] that will be used if the user skips it.
 
 Output format — EXACTLY this structure, nothing else:

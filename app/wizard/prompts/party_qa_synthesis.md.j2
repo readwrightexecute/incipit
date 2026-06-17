@@ -1,0 +1,38 @@
+{{ voice }}
+
+The round-table review of the clarifying questions has concluded. Below is the
+project idea, the current questions (numbered 1–{{ n_qas }}), and the full
+discussion. Distill the discussion into concrete, agreed-upon suggestions — only
+ones the group actually supported. Skip points raised and then dropped.
+
+THE PROJECT IDEA
+================
+{{ idea }}
+
+THE CURRENT QUESTIONS
+=====================
+{{ spec }}
+
+FULL DISCUSSION
+===============
+{{ transcript }}
+
+OUTPUT
+======
+Output ONLY a list of suggestion blocks, nothing else, separated by a line with
+three dashes. Two block types are allowed:
+
+To add a NEW question the group felt was missing:
+ADD_QUESTION: <the new clarifying question>
+ASSUMPTION: <a sensible default answer if the user skips it>
+WHY: <one short sentence — why it matters>
+---
+
+To propose a better answer to an EXISTING question:
+SUGGEST_ANSWER: <the question number, 1–{{ n_qas }}>
+ANSWER: <the proposed answer>
+WHY: <one short sentence — the consensus reason>
+---
+
+Only reference existing question numbers in range. If the group reached no
+concrete suggestions, output exactly: NO CHANGES.
