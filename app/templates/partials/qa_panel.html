@@ -18,7 +18,7 @@
             hx-target="#qa-review-region" hx-swap="innerHTML"
             {% if s.qa_review_status == 'running' %}disabled{% endif %}
             title="Have the model critique the assembled spec for ambiguity, testability, gaps and contradictions">
-      Run deeper QA review (LLM)
+      {% if s.qa_review_status in ('ready', 'error') %}Re-run QA review{% else %}Run deeper QA review (LLM){% endif %}
     </button>
   </p>
   <div id="qa-review-region">

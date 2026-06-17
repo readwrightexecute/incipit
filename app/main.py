@@ -421,6 +421,12 @@ async def qa_panel(request: Request, sid: str):
     s = state.get(sid)
     if s is None:
         return HTMLResponse("")
+    # Auto-run the deeper QA review once drafting is done (no click needed).
+    drafting = any(sec.status != "done" for sec in s.sections)
+    if s.sections and not drafting and s.qa_review_status == "idle":
+        s.qa_review_status = "running"
+        s.qa_review = []
+        asyncio.create_task(flow.run_qa_review(s))
     return _render("partials/qa_panel.html", request, s=s, lint=flow.lint_spec(s))
 
 
