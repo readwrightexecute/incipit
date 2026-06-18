@@ -1,0 +1,42 @@
+{
+  "include": [
+    "app/**/*.py",
+    "app/wizard/**/*.yaml",
+    "app/wizard/prompts/**/*.j2",
+    "app/templates/**/*.html",
+    "Containerfile"
+  ],
+  "exclude": [
+    "app/static/**",
+    "patches/**",
+    "docs/**",
+    "*.md",
+    "LICENSE",
+    ".gitignore",
+    ".env.example",
+    "requirements.txt",
+    ".opencodereview/**"
+  ],
+  "rules": [
+    {
+      "path": "app/main.py",
+      "rule": "FastAPI + HTMX. POST handlers must NOT block on the LLM: they mutate session state, kick off background work with asyncio.create_task(flow.run_*), and immediately return an HTMX partial. /healthz must not touch the LLM. Flag any handler that awaits a backend.generate() call inline."
+    },
+    {
+      "path": "app/wizard/flow.py",
+      "rule": "Orchestration layer. Each run_* coroutine renders a Jinja prompt, calls backend.generate(), mutates the Session, and publish()es the correct SSE events (questions_ready, section_started, section_done, error). assemble_final() must be deterministic string concatenation with NO LLM call. Flag missing/incorrect SSE events or error paths that don't restore state."
+    },
+    {
+      "path": "app/wizard/state.py",
+      "rule": "In-memory Session/QA/Section dataclasses, single-replica single-user by design. SSE uses one queue per open connection (subscribers list), never a shared queue. Flag anything assuming persistence across restart or a shared SSE queue."
+    },
+    {
+      "path": "app/llm/diffusion_cnv.py",
+      "rule": "Drives a persistent llama-diffusion-cli -cnv subprocess over a brittle stdin/stdout pipe protocol: turn marker is '\\n> ', input read line-by-line so prompts are flattened to literal \\n, /clear resets history, process idle-killed after IDLE_TIMEOUT, changed system prompt forces respawn. Flag changes that could desync the marker parsing or deadlock on read."
+    },
+    {
+      "path": "app/llm/**/*.py",
+      "rule": "Backends sit behind the LLMBackend Protocol (base.py); get_backend() selects by PROMPTGEN_BACKEND and imports lazily. The openai path must pull in NO diffusion/GPU code. enable_thinking=false is only sent when the disable_thinking setting is on. Flag cross-backend imports or eager diffusion imports on the openai path."
+    }
+  ]
+}

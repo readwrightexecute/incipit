@@ -2,3 +2,4 @@ __pycache__/
 *.pyc
 .promptgen.json
 .env
+.opencodereview/last-review.txt
