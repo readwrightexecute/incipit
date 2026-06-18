@@ -52,6 +52,25 @@ def _push(s) -> dict:
     return {"HX-Push-Url": f"/sessions/{s.id}"}
 
 
+# Background wizard jobs are fire-and-forget. Keep a strong reference (a bare
+# create_task() may be garbage-collected before it finishes) and log any
+# unhandled exception (otherwise it's swallowed and the session is left stuck
+# mid-phase with no error surfaced).
+_background_tasks: set[asyncio.Task] = set()
+
+
+def _spawn(coro) -> None:
+    task = asyncio.create_task(coro)
+    _background_tasks.add(task)
+
+    def _done(t: asyncio.Task) -> None:
+        _background_tasks.discard(t)
+        if not t.cancelled() and t.exception() is not None:
+            log.error("background task failed", exc_info=t.exception())
+
+    task.add_done_callback(_done)
+
+
 @app.on_event("startup")
 async def startup():
     # Load persisted endpoint/model settings over the env-seeded defaults.
@@ -145,7 +164,7 @@ async def create_session(request: Request, idea: str = Form(...),
     s.project_type, s.form_factor, s.stakes = project_type, "", DEFAULT_STAKES
     s.repo_url = repo_url.strip() if project_type == "existing" else ""
     s.phase = "clarify"
-    asyncio.create_task(flow.run_clarify(s))
+    _spawn(flow.run_clarify(s))
     return _render("step3_clarify.html", request, headers=_push(s), s=s)
 
 
@@ -159,7 +178,7 @@ async def moonshot(request: Request, idea: str = Form(...),
     s.project_type, s.form_factor, s.stakes = project_type, "", DEFAULT_STAKES
     s.repo_url = repo_url.strip() if project_type == "existing" else ""
     s.phase = "moonshot"
-    asyncio.create_task(flow.run_moonshot(s))
+    _spawn(flow.run_moonshot(s))
     return _render("step_moonshot.html", request, headers=_push(s), s=s)
 
 
@@ -194,7 +213,7 @@ async def answers(request: Request, sid: str):
     # "Submit & Party" sets party=1: convene the round table once the draft lands.
     s.auto_party = bool(form.get("party"))
     flow.init_sections(s)
-    asyncio.create_task(flow.run_sections(s))
+    _spawn(flow.run_sections(s))
     return _render("step4_sections.html", request, headers=_push(s), s=s,
                    examples=flow.REFINE_EXAMPLES, auto_party=s.auto_party)
 
@@ -217,7 +236,7 @@ async def retry_section(request: Request, sid: str, section_id: str):
     sec = s.section(section_id)
     if sec is not None:
         sec.status = "generating"  # render the self-refreshing waiting card
-    asyncio.create_task(flow.run_single_section(s, section_id))
+    _spawn(flow.run_single_section(s, section_id))
     return _render("partials/section_card.html", request, s=s, sec=sec,
                    examples=flow.REFINE_EXAMPLES)
 
@@ -256,7 +275,7 @@ async def refine(request: Request, sid: str, section_id: str,
         # Flip status before rendering so the response is the self-refreshing
         # waiting card, not the inert done card (the task hasn't started yet).
         sec.status = "generating"
-    asyncio.create_task(flow.run_refine(s, section_id, instruction))
+    _spawn(flow.run_refine(s, section_id, instruction))
     return _render("partials/section_card.html", request, s=s, sec=sec,
                    examples=flow.REFINE_EXAMPLES)
 
@@ -269,7 +288,7 @@ async def party_start(request: Request, sid: str):
     if s is None:
         return _render("expired.html", request)
     if s.party_status != "running":
-        asyncio.create_task(flow.run_party(s))
+        _spawn(flow.run_party(s))
     return _render("partials/party_panel.html", request, s=s)
 
 
@@ -328,7 +347,7 @@ async def party_change_approve(request: Request, sid: str, cid: str):
     ch = s.party_change(cid)
     if ch is not None and ch.status == "pending":
         ch.status = "applying"  # so the returned card is the self-refreshing state
-        asyncio.create_task(flow.apply_party_change(s, cid))
+        _spawn(flow.apply_party_change(s, cid))
     return _render("partials/party_change_card.html", request, s=s, ch=ch)
 
 
@@ -353,7 +372,7 @@ async def party_approve_all(request: Request, sid: str):
         if ch.status == "pending":
             ch.status = "applying"
     if pending:
-        asyncio.create_task(flow.apply_party_changes(s, pending))
+        _spawn(flow.apply_party_changes(s, pending))
     return _render("partials/party_changes.html", request, s=s)
 
 
@@ -365,7 +384,7 @@ async def party_questions_start(request: Request, sid: str):
     if s is None:
         return _render("expired.html", request)
     if s.party_status != "running":
-        asyncio.create_task(flow.run_party_questions(s))
+        _spawn(flow.run_party_questions(s))
     return _render("partials/party_qa_panel.html", request, s=s)
 
 

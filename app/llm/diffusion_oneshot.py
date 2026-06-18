@@ -43,12 +43,15 @@ class DiffusionOneshotBackend:
                     "--threads", config.THREADS,
                     *config.DIFFUSION_ARGS,
                 ]
-                proc = await asyncio.create_subprocess_exec(
-                    *cmd,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                    env={**os.environ, "TERM": "dumb", "NO_COLOR": "1"},
-                )
+                try:
+                    proc = await asyncio.create_subprocess_exec(
+                        *cmd,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                        env={**os.environ, "TERM": "dumb", "NO_COLOR": "1"},
+                    )
+                except (FileNotFoundError, OSError) as e:
+                    raise GenerationError(f"could not spawn {config.CLI_BIN}: {e}")
                 try:
                     out, err = await asyncio.wait_for(
                         proc.communicate(),
@@ -56,6 +59,7 @@ class DiffusionOneshotBackend:
                     )
                 except asyncio.TimeoutError:
                     proc.kill()
+                    await proc.wait()  # reap the killed child (avoid a zombie)
                     raise GenerationError("one-shot generation timed out")
                 if proc.returncode != 0:
                     tail = err.decode(errors="replace")[-500:]

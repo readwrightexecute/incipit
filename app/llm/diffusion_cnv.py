@@ -40,6 +40,7 @@ class DiffusionCnvBackend:
         self._proc: asyncio.subprocess.Process | None = None
         self._lock = asyncio.Lock()
         self._idle_task: asyncio.Task | None = None
+        self._stderr_task: asyncio.Task | None = None
         self._system: str | None = None
         self._stderr_tail: deque[str] = deque(maxlen=40)
         self.status = "cold"  # cold | loading | ready | generating
@@ -66,16 +67,21 @@ class DiffusionCnvBackend:
         cmd = self._build_cmd()
         log.info("spawning llama-diffusion-cli (model load may take minutes)")
         self._stderr_tail.clear()
-        self._proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            # Inherit pod env (CUDA_VISIBLE_DEVICES pins the GPU) and force a
-            # dumb terminal so the CLI emits no ANSI.
-            env={**os.environ, "TERM": "dumb", "NO_COLOR": "1"},
-        )
-        asyncio.create_task(self._drain_stderr(self._proc))
+        try:
+            self._proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                # Inherit pod env (CUDA_VISIBLE_DEVICES pins the GPU) and force a
+                # dumb terminal so the CLI emits no ANSI.
+                env={**os.environ, "TERM": "dumb", "NO_COLOR": "1"},
+            )
+        except (FileNotFoundError, OSError) as e:
+            self.status = "cold"
+            raise GenerationError(f"could not spawn {config.CLI_BIN}: {e}")
+        # Keep a reference: a bare create_task() may be garbage-collected mid-run.
+        self._stderr_task = asyncio.create_task(self._drain_stderr(self._proc))
         try:
             await self._read_until_marker(timeout=config.LOAD_TIMEOUT)
         except Exception:
@@ -108,7 +114,7 @@ class DiffusionCnvBackend:
         ('\\n> ') and output has settled for SETTLE_SECONDS."""
         assert self._proc is not None and self._proc.stdout is not None
         buf = b""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         deadline = loop.time() + timeout
         while True:
             remaining = deadline - loop.time()
@@ -153,7 +159,8 @@ class DiffusionCnvBackend:
         self, prompt: str, *, system: str | None = None, max_tokens: int = 2048
     ) -> str:
         # System prompt is fixed at spawn time via -sys; all callers pass the
-        # same one (flow.SYSTEM). A changed system forces a respawn.
+        # same one (flow.SYSTEM). A changed non-None system forces a respawn;
+        # system=None (party mode) intentionally reuses the running process.
         flat = prompt.replace("\r", " ").replace("\n", "\\n")
         async with self._lock:
             if self._idle_task is not None:
@@ -198,6 +205,9 @@ class DiffusionCnvBackend:
     async def shutdown(self) -> None:
         proc, self._proc = self._proc, None
         self.status = "cold"
+        if self._stderr_task is not None:
+            self._stderr_task.cancel()
+            self._stderr_task = None
         if proc is None or proc.returncode is not None:
             return
         try:

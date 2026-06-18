@@ -100,7 +100,9 @@ class Session:
         return next((c for c in self.party_qa_changes if c.id == cid), None)
 
     def subscribe(self) -> asyncio.Queue:
-        q: asyncio.Queue = asyncio.Queue()
+        # Bounded: a stalled or dead-but-not-unsubscribed client can't grow its
+        # queue without limit. Events are small; 512 is ample headroom.
+        q: asyncio.Queue = asyncio.Queue(maxsize=512)
         self.subscribers.append(q)
         return q
 
@@ -109,8 +111,17 @@ class Session:
             self.subscribers.remove(q)
 
     def publish(self, event: str, data: str = "") -> None:
-        for q in self.subscribers:
-            q.put_nowait({"event": event, "data": data})
+        ev = {"event": event, "data": data}
+        for q in list(self.subscribers):  # copy: unsubscribe may run between events
+            try:
+                q.put_nowait(ev)
+            except asyncio.QueueFull:
+                # Drop the oldest event to keep the stream live rather than wedge.
+                try:
+                    q.get_nowait()
+                    q.put_nowait(ev)
+                except (asyncio.QueueEmpty, asyncio.QueueFull):
+                    pass
 
 
 _sessions: dict[str, Session] = {}
