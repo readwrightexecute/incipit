@@ -36,6 +36,10 @@ async def fetch_repo_context(url: str) -> str:
             if repo.endswith(".git"):
                 repo = repo[:-4]
             return await _github(owner, repo)
+        # SSRF guard: only http(s) URLs reach the scraper. Blocks file://,
+        # gopher://, etc. from being forwarded to the Firecrawl service.
+        if not re.match(r"https?://", url, re.I):
+            return f"(Won't fetch non-http(s) URL for repo context: {url})"
         return await _firecrawl(url)
     except Exception as e:  # noqa: BLE001 — best-effort; surface as context note
         log.warning("repo fetch failed for %s: %s", url, e)
@@ -108,6 +112,7 @@ async def _firecrawl(url: str) -> str:
     endpoint = config.FIRECRAWL_URL.rstrip("/") + "/v1/scrape"
     async with httpx.AsyncClient(timeout=config.REPO_TIMEOUT * 2) as c:
         r = await c.post(endpoint, json={"url": url, "formats": ["markdown"]})
+        r.raise_for_status()  # 5xx often returns HTML → guard before .json()
         data = r.json()
         md = (data.get("data") or {}).get("markdown") or data.get("markdown") or ""
     return _clip(f"Repository page: {url}\n\n{md}")

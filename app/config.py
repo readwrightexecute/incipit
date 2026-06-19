@@ -1,6 +1,7 @@
 """Environment-driven settings. Every knob has a PROMPTGEN_* env override."""
 
 import os
+import shlex
 
 try:
     from dotenv import load_dotenv
@@ -38,7 +39,10 @@ DIFFUSION_ARGS = os.environ.get(
     "--diffusion-eb-t-max 0.8 --diffusion-eb-t-min 0.4 "
     "--diffusion-eb-entropy-bound 0.1 --diffusion-eb-confidence 0.005 "
     "--diffusion-kv-cache auto --diffusion-gpu-sampling auto",
-).split()
+)
+# shlex (not .split()) so an override with quoted/space-bearing values tokenizes
+# correctly before being passed to subprocess_exec.
+DIFFUSION_ARGS = shlex.split(DIFFUSION_ARGS)
 
 # Timeouts (seconds)
 GEN_TIMEOUT = _int("PROMPTGEN_GEN_TIMEOUT", 300)

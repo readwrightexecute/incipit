@@ -19,7 +19,15 @@ log = logging.getLogger("promptgen.openai")
 class OpenAIBackend:
     def __init__(self) -> None:
         self._lock = asyncio.Lock()
+        self._client: httpx.AsyncClient | None = None
         self.status = "ready"
+
+    def _http(self) -> httpx.AsyncClient:
+        # Reuse one client so HTTP keep-alive/connection pooling survives across
+        # calls; a fresh client per request reopens the TCP+TLS connection.
+        if self._client is None:
+            self._client = httpx.AsyncClient(timeout=config.GEN_TIMEOUT)
+        return self._client
 
     async def generate(
         self, prompt: str, *, system: str | None = None, max_tokens: int = 2048
@@ -52,16 +60,20 @@ class OpenAIBackend:
         async with self._lock:
             self.status = "generating"
             try:
-                async with httpx.AsyncClient(timeout=config.GEN_TIMEOUT) as client:
-                    r = await client.post(
-                        f"{cfg.base_url}/chat/completions",
-                        json=body,
-                        headers=headers,
-                    )
+                r = await self._http().post(
+                    f"{cfg.base_url}/chat/completions",
+                    json=body,
+                    headers=headers,
+                )
                 if r.status_code != 200:
                     raise GenerationError(f"upstream {r.status_code}: {r.text[:300]}")
-                data = r.json()
-                content = data["choices"][0]["message"]["content"] or ""
+                try:
+                    data = r.json()
+                    content = data["choices"][0]["message"]["content"] or ""
+                except (ValueError, KeyError, IndexError, TypeError) as e:
+                    raise GenerationError(
+                        f"unexpected response shape from {cfg.base_url}: {e}"
+                    )
                 if not content.strip():
                     raise GenerationError("upstream returned empty content")
                 return content.strip()
@@ -71,7 +83,9 @@ class OpenAIBackend:
                 self.status = "ready"
 
     async def shutdown(self) -> None:
-        pass
+        if self._client is not None:
+            await self._client.aclose()
+            self._client = None
 
 
 async def list_models(base_url: str, api_key: str = "") -> list[str]:

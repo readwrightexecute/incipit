@@ -121,9 +121,10 @@ async def _heartbeat(s: Session, label: str) -> None:
     is being generated and for how long — fires immediately, then every 5s."""
     try:
         anim = _anim_for(label)
-        start = asyncio.get_event_loop().time()
+        loop = asyncio.get_running_loop()
+        start = loop.time()
         while True:
-            elapsed = int(asyncio.get_event_loop().time() - start)
+            elapsed = int(loop.time() - start)
             status = getattr(backend, "status", "ready")
             if status in ("cold", "loading"):
                 await _emit(s, "model_loading",
