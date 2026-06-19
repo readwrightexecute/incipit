@@ -85,9 +85,6 @@ class Session:
     # Question-review party (step 2): suggested new questions / answers.
     party_qa_changes: list[PartyQAChange] = field(default_factory=list)
     # Post-processing QA (final page): on-demand LLM critique of the spec.
-    qa_review: list = field(default_factory=list)  # [{severity, category, text}]
-    qa_review_status: str = "idle"  # idle | running | ready | error
-    qa_fix_status: str = "idle"  # idle | running | ready | error — "implement fixes"
     # SSE fan-out: one queue per open /events connection. A single shared
     # queue silently splits events between stale and live connections.
     subscribers: list[asyncio.Queue] = field(default_factory=list)
@@ -103,7 +100,9 @@ class Session:
         return next((c for c in self.party_qa_changes if c.id == cid), None)
 
     def subscribe(self) -> asyncio.Queue:
-        q: asyncio.Queue = asyncio.Queue()
+        # Bounded: a stalled or dead-but-not-unsubscribed client can't grow its
+        # queue without limit. Events are small; 512 is ample headroom.
+        q: asyncio.Queue = asyncio.Queue(maxsize=512)
         self.subscribers.append(q)
         return q
 
@@ -112,8 +111,17 @@ class Session:
             self.subscribers.remove(q)
 
     def publish(self, event: str, data: str = "") -> None:
-        for q in self.subscribers:
-            q.put_nowait({"event": event, "data": data})
+        ev = {"event": event, "data": data}
+        for q in list(self.subscribers):  # copy: unsubscribe may run between events
+            try:
+                q.put_nowait(ev)
+            except asyncio.QueueFull:
+                # Drop the oldest event to keep the stream live rather than wedge.
+                try:
+                    q.get_nowait()
+                    q.put_nowait(ev)
+                except (asyncio.QueueEmpty, asyncio.QueueFull):
+                    pass
 
 
 _sessions: dict[str, Session] = {}

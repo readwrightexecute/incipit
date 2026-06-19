@@ -4,7 +4,7 @@
 <p class="step-label">Your Super-Prompt</p>
 <div>
   <div class="action-bar">
-    <button id="copy-btn" onclick="copyPrompt()">Copy to clipboard</button>
+    <button id="copy-btn" onclick="copyPrompt()" aria-live="polite">Copy to clipboard</button>
     <a href="/sessions/{{ s.id }}/download.md" role="button" class="secondary">Download .md</a>
     <a href="/" role="button" class="contrast outline">New session</a>
   </div>
@@ -13,11 +13,13 @@
 <script>
 function copyPrompt() {
   navigator.clipboard.writeText(document.getElementById('mega-prompt').innerText)
-    .then(() => {
-      const b = document.getElementById('copy-btn');
-      b.textContent = 'Copied ✓';
-      setTimeout(() => b.textContent = 'Copy to clipboard', 1500);
-    });
+    .then(() => flashCopyBtn('Copied ✓'))
+    .catch(() => flashCopyBtn('Copy failed — select & copy manually'));
+}
+function flashCopyBtn(msg) {
+  const b = document.getElementById('copy-btn');
+  b.textContent = msg;
+  setTimeout(() => b.textContent = 'Copy to clipboard', 1500);
 }
 </script>
 {% endblock %}

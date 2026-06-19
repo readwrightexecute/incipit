@@ -121,9 +121,10 @@ async def _heartbeat(s: Session, label: str) -> None:
     is being generated and for how long — fires immediately, then every 5s."""
     try:
         anim = _anim_for(label)
-        start = asyncio.get_event_loop().time()
+        loop = asyncio.get_running_loop()
+        start = loop.time()
         while True:
-            elapsed = int(asyncio.get_event_loop().time() - start)
+            elapsed = int(loop.time() - start)
             status = getattr(backend, "status", "ready")
             if status in ("cold", "loading"):
                 await _emit(s, "model_loading",
@@ -160,6 +161,12 @@ def parse_questions(text: str) -> list[QA]:
 async def run_clarify(s: Session) -> None:
     try:
         await _emit(s, "job_started", "clarify")
+        # Form factor isn't asked in the UI anymore — infer it from the idea so
+        # the clarify/section prompts and final spec stay accurate and can't be
+        # contradicted by a stale calibration choice. (Reuses _infer_calibration;
+        # we adopt only its form-factor result, leaving stakes/project_type.)
+        if not s.form_factor:
+            s.form_factor = (await _infer_calibration(s))[1]
         await _ensure_repo_context(s)
         tmpl = _jinja.get_template("clarify.md.j2")
         prompt = tmpl.render(n_questions=N_QUESTIONS.get(s.stakes, 6), **_ctx(s))
@@ -264,7 +271,8 @@ async def refine_section(s: Session, sec: Section, instruction: str) -> bool:
         tmpl = _jinja.get_template("refine.md.j2")
         prompt = tmpl.render(
             title=sec.title, content=sec.history[-1],
-            method_instruction=instruction, **_ctx(s),
+            method_instruction=instruction,
+            **_ctx(s),
         )
         sec.content = await _generate(s, prompt, label=f"Refining: {sec.title}")
         sec.status = "done"
@@ -400,8 +408,8 @@ def _resolve_section(raw_id: str, sections: list[Section]) -> str | None:
 
 
 def _parse_changes(s: Session, raw: str) -> list[PartyChange]:
-    if "NO CHANGES" in raw.upper():
-        return []
+    # Don't short-circuit on a substring "NO CHANGES" — parse the blocks (a bare
+    # "NO CHANGES" yields zero blocks anyway). Mirrors _parse_qa_changes.
     changes: list[PartyChange] = []
     for i, block in enumerate(re.split(r"^\s*-{3,}\s*$", raw, flags=re.M)):
         sec_id = change = None
@@ -534,9 +542,13 @@ def _qa_subject(s: Session) -> str:
 
 
 def _parse_qa_changes(s: Session, raw: str) -> list[PartyQAChange]:
-    """Parse the QA-synthesis output into add_question / suggest_answer items."""
-    if "NO CHANGES" in raw.upper():
-        return []
+    """Parse the QA-synthesis output into add_question / suggest_answer items.
+
+    Don't short-circuit on a substring "NO CHANGES": the model routinely emits
+    real blocks alongside prose like "no changes to Q3-7", which would wrongly
+    discard the whole batch (the contradiction where the facilitator announces
+    consensus but the panel shows "nothing to add"). A bare "NO CHANGES" simply
+    parses to zero blocks anyway."""
     changes: list[PartyQAChange] = []
     n_qas = len(s.qas)
     for i, block in enumerate(re.split(r"^\s*-{3,}\s*$", raw, flags=re.M)):
@@ -728,125 +740,3 @@ def assemble_final(s: Session) -> str:
     for sec in s.sections:
         parts += [f"## {sec.title}", "", sec.content, ""]
     return "\n".join(parts)
-
-
-# ----------------------------------------------------------------------------
-# Post-processing QA: a free deterministic lint (always shown on the final page)
-# plus an on-demand LLM critique pass.
-# ----------------------------------------------------------------------------
-
-_PLACEHOLDER_PATTERNS = [
-    (r"\bTODO\b", "a TODO marker"),
-    (r"\bTBD\b", "a TBD marker"),
-    (r"\bFIXME\b", "a FIXME marker"),
-    (r"\bXXX\b", "an XXX marker"),
-    (r"\[(?:placeholder|fill in|insert|your .*?here)\]", "placeholder text"),
-    (r"\blorem ipsum\b", "lorem ipsum filler"),
-]
-
-
-def lint_spec(s: Session) -> list[dict]:
-    """Deterministic, no-LLM checks over the assembled spec. Returns findings
-    as {severity: error|warn|info, message}."""
-    findings: list[dict] = []
-    if not s.sections:
-        return [{"severity": "error", "message": "No sections were drafted."}]
-
-    for sec in s.sections:
-        content = (sec.content or "").strip()
-        if sec.status == "error" or content.startswith("_Generation failed"):
-            findings.append({"severity": "error",
-                             "message": f"{sec.title}: generation failed — re-draft this section."})
-            continue
-        if len(content) < 40:
-            findings.append({"severity": "warn",
-                             "message": f"{sec.title}: very short ({len(content)} chars) — likely underspecified."})
-        for pat, label in _PLACEHOLDER_PATTERNS:
-            if re.search(pat, content, re.I):
-                findings.append({"severity": "warn",
-                                 "message": f"{sec.title}: contains {label}."})
-                break
-
-    # Contradiction heuristic: an out-of-scope bullet restated in requirements.
-    oos = next((x for x in s.sections if "scope" in x.id or "out" in x.id), None)
-    reqs = " ".join(x.content.lower() for x in s.sections
-                    if "requirement" in x.id or "functional" in x.id)
-    if oos and reqs:
-        for line in oos.content.splitlines():
-            item = line.strip(" -*•\t").strip().lower()
-            if len(item) >= 12 and item in reqs:
-                findings.append({"severity": "warn",
-                                 "message": f"Possible contradiction: out-of-scope item “{item[:60]}” also appears in the requirements."})
-
-    if not findings:
-        findings.append({"severity": "info", "message": "No issues found by the automated lint."})
-    return findings
-
-
-_QA_LINE_RE = re.compile(r"^\s*\[\s*(high|med|medium|low)\s*\]\s*(.+)$", re.I)
-
-
-def _parse_qa_review(raw: str) -> list[dict]:
-    # Don't short-circuit on a substring match for "NO ISSUES" — it can appear
-    # inside a finding. Just parse the bracketed lines; none → treat as clean.
-    out: list[dict] = []
-    for ln in raw.splitlines():
-        m = _QA_LINE_RE.match(ln)
-        if not m:
-            continue
-        sev = m.group(1).lower()
-        sev = "med" if sev == "medium" else sev
-        body = m.group(2).strip()
-        category, _, text = body.partition(":")
-        if text:
-            out.append({"severity": sev, "category": category.strip(), "text": text.strip()})
-        else:
-            out.append({"severity": sev, "category": "", "text": body})
-    return out
-
-
-async def run_qa_review(s: Session) -> None:
-    """On-demand LLM critique of the assembled spec."""
-    try:
-        s.qa_review_status = "running"
-        s.qa_review = []
-        await _emit(s, "qa_review_started")
-        prompt = _jinja.get_template("qa_review.md.j2").render(spec=assemble_final(s))
-        raw = await _generate(s, prompt, max_tokens=900, label="Running QA review")
-        s.qa_review = _parse_qa_review(raw)
-        s.qa_review_status = "ready"
-        await _emit(s, "progress", "✓ QA review complete — findings below.")
-        await _emit(s, "qa_review_ready")
-    except Exception as e:
-        log.exception("qa review failed")
-        s.qa_review_status = "error"
-        s.error = str(e)
-        await _emit(s, "qa_review_ready")
-
-
-async def run_qa_fix(s: Session) -> None:
-    """Implement the QA-review findings: ask the model to turn them into
-    per-section edits, then apply each through the refine pipeline."""
-    try:
-        s.qa_fix_status = "running"
-        findings = "\n".join(
-            f"- [{f.get('severity', '')}] {f.get('category', '')}: {f.get('text', '')}"
-            for f in s.qa_review)
-        prompt = _jinja.get_template("qa_fix.md.j2").render(
-            spec=assemble_final(s), sections=s.sections, findings=findings)
-        raw = await _generate(s, prompt, max_tokens=1200, label="Planning QA fixes")
-        changes = _parse_changes(s, raw)  # reuse the party SECTION/CHANGE parser
-        for ch in changes:
-            sec = s.section(ch.section_id)
-            if sec is not None:
-                await refine_section(s, sec, ch.instruction)
-        s.qa_fix_status = "ready"
-        await _emit(s, "mega_updated")
-        await _emit(s, "sections_updated")  # refresh the section cards on step 3
-        await _emit(s, "progress", "✓ Fixes applied — sections updated above.")
-        await _emit(s, "qa_fix_ready")
-    except Exception as e:
-        log.exception("qa fix failed")
-        s.qa_fix_status = "error"
-        s.error = str(e)
-        await _emit(s, "qa_fix_ready")

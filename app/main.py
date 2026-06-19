@@ -23,18 +23,19 @@ templates = Jinja2Templates(directory=_here / "templates")
 templates.env.globals["personas"] = flow.PERSONAS
 templates.env.globals["facilitator"] = flow.FACILITATOR
 
-FORM_FACTORS = ["web app", "CLI tool", "API/service", "mobile app"]
 PROJECT_TYPES = [
     ("new", "New project", "Greenfield — starting from scratch"),
     ("existing", "Existing codebase", "Adding to / changing something that exists"),
 ]
 # Stakes is no longer asked — every spec is calibrated as production-grade.
+# Form factor is no longer asked either — it's inferred from the idea (see
+# flow.run_clarify / _infer_calibration) so it can't contradict the spec.
 DEFAULT_STAKES = "serious"
 
 
 def _calibration_ctx() -> dict:
     """Option lists for the calibration controls on step 1."""
-    return {"form_factors": FORM_FACTORS, "project_types": PROJECT_TYPES}
+    return {"project_types": PROJECT_TYPES}
 
 
 def _render(name: str, request: Request, headers: dict | None = None, **ctx) -> HTMLResponse:
@@ -49,6 +50,25 @@ def _html(name: str, **ctx) -> str:
 def _push(s) -> dict:
     """HX-Push-Url header so refresh/back lands on the session resume route."""
     return {"HX-Push-Url": f"/sessions/{s.id}"}
+
+
+# Background wizard jobs are fire-and-forget. Keep a strong reference (a bare
+# create_task() may be garbage-collected before it finishes) and log any
+# unhandled exception (otherwise it's swallowed and the session is left stuck
+# mid-phase with no error surfaced).
+_background_tasks: set[asyncio.Task] = set()
+
+
+def _spawn(coro) -> None:
+    task = asyncio.create_task(coro)
+    _background_tasks.add(task)
+
+    def _done(t: asyncio.Task) -> None:
+        _background_tasks.discard(t)
+        if not t.cancelled() and t.exception() is not None:
+            log.error("background task failed", exc_info=t.exception())
+
+    task.add_done_callback(_done)
 
 
 @app.on_event("startup")
@@ -124,8 +144,7 @@ async def go_back(request: Request, sid: str, to: str):
         # Re-edit the brain dump with the prior inputs prefilled. (Submitting
         # again starts a fresh draft — accepted.)
         return _render("step1_idea.html", request, idea=s.idea, repo_url=s.repo_url,
-                       sel_project_type=s.project_type, sel_form_factor=s.form_factor,
-                       **_calibration_ctx())
+                       sel_project_type=s.project_type, **_calibration_ctx())
     if to == "clarify":
         s.phase = "clarify"
         return _render("resume.html", request, body="step3_clarify.html", s=s)
@@ -138,29 +157,28 @@ async def go_back(request: Request, sid: str, to: str):
 
 @app.post("/sessions", response_class=HTMLResponse)
 async def create_session(request: Request, idea: str = Form(...),
-                         project_type: str = Form(...), form_factor: str = Form(...),
-                         repo_url: str = Form("")):
+                         project_type: str = Form(...), repo_url: str = Form("")):
     s = state.create()
     s.idea = idea.strip()
-    s.project_type, s.form_factor, s.stakes = project_type, form_factor, DEFAULT_STAKES
+    # form_factor is inferred from the idea in run_clarify; stakes is fixed.
+    s.project_type, s.form_factor, s.stakes = project_type, "", DEFAULT_STAKES
     s.repo_url = repo_url.strip() if project_type == "existing" else ""
     s.phase = "clarify"
-    asyncio.create_task(flow.run_clarify(s))
+    _spawn(flow.run_clarify(s))
     return _render("step3_clarify.html", request, headers=_push(s), s=s)
 
 
 @app.post("/moonshot", response_class=HTMLResponse)
 async def moonshot(request: Request, idea: str = Form(...),
-                   project_type: str = Form(""), form_factor: str = Form(""),
-                   repo_url: str = Form("")):
+                   project_type: str = Form(""), repo_url: str = Form("")):
     s = state.create()
     s.idea = idea.strip()
-    # Honor any explicit calibration the user set on step 1; run_moonshot
-    # infers whatever's left blank. Stakes is fixed to the default.
-    s.project_type, s.form_factor, s.stakes = project_type, form_factor, DEFAULT_STAKES
+    # Honor the project_type the user set on step 1; run_moonshot infers the
+    # rest (form factor always inferred now). Stakes is fixed to the default.
+    s.project_type, s.form_factor, s.stakes = project_type, "", DEFAULT_STAKES
     s.repo_url = repo_url.strip() if project_type == "existing" else ""
     s.phase = "moonshot"
-    asyncio.create_task(flow.run_moonshot(s))
+    _spawn(flow.run_moonshot(s))
     return _render("step_moonshot.html", request, headers=_push(s), s=s)
 
 
@@ -195,7 +213,7 @@ async def answers(request: Request, sid: str):
     # "Submit & Party" sets party=1: convene the round table once the draft lands.
     s.auto_party = bool(form.get("party"))
     flow.init_sections(s)
-    asyncio.create_task(flow.run_sections(s))
+    _spawn(flow.run_sections(s))
     return _render("step4_sections.html", request, headers=_push(s), s=s,
                    examples=flow.REFINE_EXAMPLES, auto_party=s.auto_party)
 
@@ -218,7 +236,7 @@ async def retry_section(request: Request, sid: str, section_id: str):
     sec = s.section(section_id)
     if sec is not None:
         sec.status = "generating"  # render the self-refreshing waiting card
-    asyncio.create_task(flow.run_single_section(s, section_id))
+    _spawn(flow.run_single_section(s, section_id))
     return _render("partials/section_card.html", request, s=s, sec=sec,
                    examples=flow.REFINE_EXAMPLES)
 
@@ -257,7 +275,7 @@ async def refine(request: Request, sid: str, section_id: str,
         # Flip status before rendering so the response is the self-refreshing
         # waiting card, not the inert done card (the task hasn't started yet).
         sec.status = "generating"
-    asyncio.create_task(flow.run_refine(s, section_id, instruction))
+    _spawn(flow.run_refine(s, section_id, instruction))
     return _render("partials/section_card.html", request, s=s, sec=sec,
                    examples=flow.REFINE_EXAMPLES)
 
@@ -270,7 +288,7 @@ async def party_start(request: Request, sid: str):
     if s is None:
         return _render("expired.html", request)
     if s.party_status != "running":
-        asyncio.create_task(flow.run_party(s))
+        _spawn(flow.run_party(s))
     return _render("partials/party_panel.html", request, s=s)
 
 
@@ -329,7 +347,7 @@ async def party_change_approve(request: Request, sid: str, cid: str):
     ch = s.party_change(cid)
     if ch is not None and ch.status == "pending":
         ch.status = "applying"  # so the returned card is the self-refreshing state
-        asyncio.create_task(flow.apply_party_change(s, cid))
+        _spawn(flow.apply_party_change(s, cid))
     return _render("partials/party_change_card.html", request, s=s, ch=ch)
 
 
@@ -354,7 +372,7 @@ async def party_approve_all(request: Request, sid: str):
         if ch.status == "pending":
             ch.status = "applying"
     if pending:
-        asyncio.create_task(flow.apply_party_changes(s, pending))
+        _spawn(flow.apply_party_changes(s, pending))
     return _render("partials/party_changes.html", request, s=s)
 
 
@@ -366,7 +384,7 @@ async def party_questions_start(request: Request, sid: str):
     if s is None:
         return _render("expired.html", request)
     if s.party_status != "running":
-        asyncio.create_task(flow.run_party_questions(s))
+        _spawn(flow.run_party_questions(s))
     return _render("partials/party_qa_panel.html", request, s=s)
 
 
@@ -428,7 +446,7 @@ async def party_qa_approve_all(request: Request, sid: str):
 @app.get("/sessions/{sid}/sections-fragment", response_class=HTMLResponse)
 async def sections_fragment(request: Request, sid: str):
     """All section cards as a group — refetched after a background pass
-    (Implement fixes / party) rewrites sections, so the page updates without a reload."""
+    (party round table) rewrites sections, so the page updates without a reload."""
     s = state.get(sid)
     if s is None:
         return HTMLResponse("")
@@ -438,70 +456,11 @@ async def sections_fragment(request: Request, sid: str):
 
 @app.get("/sessions/{sid}/step3-actions", response_class=HTMLResponse)
 async def step3_actions(request: Request, sid: str):
-    """Step-3 bottom bar — Back during drafting, then +Review QA / Party / Finish."""
+    """Step-3 bottom bar — Back during drafting, then Party / Finish."""
     s = state.get(sid)
     if s is None:
         return HTMLResponse("")
     return _render("partials/step3_actions.html", request, s=s)
-
-
-@app.get("/sessions/{sid}/qa", response_class=HTMLResponse)
-async def qa_panel(request: Request, sid: str):
-    """QA panel shown at the end of step 3 — lint report + deeper-review trigger.
-    Loaded on page load and refreshed on sse:job_done (once drafting finishes)."""
-    s = state.get(sid)
-    if s is None:
-        return HTMLResponse("")
-    # Auto-run the deeper QA review once drafting is done (no click needed).
-    drafting = any(sec.status != "done" for sec in s.sections)
-    if s.sections and not drafting and s.qa_review_status == "idle":
-        s.qa_review_status = "running"
-        s.qa_review = []
-        asyncio.create_task(flow.run_qa_review(s))
-    return _render("partials/qa_panel.html", request, s=s, lint=flow.lint_spec(s))
-
-
-@app.post("/sessions/{sid}/qa-review", response_class=HTMLResponse)
-async def qa_review_start(request: Request, sid: str):
-    s = state.get(sid)
-    if s is None:
-        return _render("expired.html", request)
-    if s.qa_review_status != "running":
-        # Flip to running synchronously so the returned partial renders the
-        # spinner + self-refresh attrs; otherwise the background task hasn't set
-        # the status yet and the panel comes back blank and inert.
-        s.qa_review_status = "running"
-        s.qa_review = []
-        s.qa_fix_status = "idle"  # a fresh review supersedes any prior fix panel
-        asyncio.create_task(flow.run_qa_review(s))
-    return _render("partials/qa_review.html", request, s=s)
-
-
-@app.get("/sessions/{sid}/qa-review", response_class=HTMLResponse)
-async def qa_review_panel(request: Request, sid: str):
-    s = state.get(sid)
-    if s is None:
-        return HTMLResponse("")
-    return _render("partials/qa_review.html", request, s=s)
-
-
-@app.post("/sessions/{sid}/qa-fix", response_class=HTMLResponse)
-async def qa_fix_start(request: Request, sid: str):
-    s = state.get(sid)
-    if s is None:
-        return _render("expired.html", request)
-    if s.qa_fix_status != "running":
-        s.qa_fix_status = "running"  # set synchronously so the partial shows progress
-        asyncio.create_task(flow.run_qa_fix(s))
-    return _render("partials/qa_fix.html", request, s=s)
-
-
-@app.get("/sessions/{sid}/qa-fix", response_class=HTMLResponse)
-async def qa_fix_panel(request: Request, sid: str):
-    s = state.get(sid)
-    if s is None:
-        return HTMLResponse("")
-    return _render("partials/qa_fix.html", request, s=s)
 
 
 @app.get("/sessions/{sid}/megaprompt", response_class=HTMLResponse)

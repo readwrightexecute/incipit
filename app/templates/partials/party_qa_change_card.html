@@ -18,7 +18,7 @@
               hx-target="#qachange-{{ ch.id }}" hx-swap="outerHTML">Deny</button>
     </div>
     {% elif ch.status == 'applied' %}
-    <p style="color:#38a169">✓ Applied{% if ch.kind == 'add_question' %} — added to your questions above{% else %} — answer filled in above{% endif %}.</p>
+    <p style="color:var(--success)">✓ Applied{% if ch.kind == 'add_question' %} — added to your questions above{% else %} — answer filled in above{% endif %}.</p>
     {% elif ch.status == 'denied' %}
     <p class="assumption">Denied — not applied.</p>
     {% endif %}

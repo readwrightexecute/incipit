@@ -5,8 +5,8 @@
     smart-default answers, a full spec draft, then a BMAD round table whose consensus
     is applied automatically. This takes a few minutes; watch it unfold below.</p>
 
-  <div id="status-bar" sse-swap="model_loading,progress,moon,error"></div>
-  <div id="party-turn" class="party-turn" sse-swap="party_turn"></div>
+  <div id="status-bar" role="status" aria-live="polite" sse-swap="model_loading,progress,moon,error"></div>
+  <div id="party-turn" class="party-turn" role="status" aria-live="polite" sse-swap="party_turn"></div>
 
   <div id="party-chat" class="chat" sse-swap="party_msg" hx-swap="beforeend">
     {% include "partials/party_chat.html" %}

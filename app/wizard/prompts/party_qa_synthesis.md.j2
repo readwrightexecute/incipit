@@ -5,6 +5,11 @@ project idea, the current questions (numbered 1–{{ n_qas }}), and the full
 discussion. Distill the discussion into concrete, agreed-upon suggestions — only
 ones the group actually supported. Skip points raised and then dropped.
 
+If the facilitator summarized the changes the group converged on, you MUST
+output a block for EACH concrete change named there: a SUGGEST_ANSWER for an
+agreed answer to an existing question, or an ADD_QUESTION for an agreed new one.
+Never describe consensus in prose without emitting its block.
+
 THE PROJECT IDEA
 ================
 {{ idea }}
@@ -34,5 +39,6 @@ ANSWER: <the proposed answer>
 WHY: <one short sentence — the consensus reason>
 ---
 
-Only reference existing question numbers in range. If the group reached no
-concrete suggestions, output exactly: NO CHANGES.
+Only reference existing question numbers in range (1–{{ n_qas }}). If — and only
+if — the group reached no concrete suggestions at all, output exactly: NO CHANGES
+(and nothing else).

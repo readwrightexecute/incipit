@@ -16,7 +16,7 @@
     {% elif ch.status == 'applying' %}
     <p><span class="spinner" data-anim="diamonds"></span> Applying to “{{ ch.section_title }}”…</p>
     {% elif ch.status == 'applied' %}
-    <p style="color:#38a169">✓ Applied to “{{ ch.section_title }}” — the mega-prompt below is updated.</p>
+    <p style="color:var(--success)">✓ Applied to “{{ ch.section_title }}” — the mega-prompt below is updated.</p>
     {% elif ch.status == 'denied' %}
     <p class="assumption">Denied — not applied.</p>
     {% endif %}

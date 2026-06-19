@@ -2,3 +2,7 @@ __pycache__/
 *.pyc
 .promptgen.json
 .env
+.opencodereview/last-review.txt
+# Claude Code authoring tooling — general skill, not part of the app. Kept on
+# disk (so it still works locally) but not tracked; it dominated every diff.
+.claude/skills/

@@ -1,7 +1,7 @@
 <script id="session-meta" type="application/json">{"id": "{{ s.id }}", "idea": {{ s.idea|tojson }}, "phase": "{{ s.phase }}"}</script>
-<p class="step-label" id="top">Step 3 of 3 — Draft, QA &amp; party</p>
+<p class="step-label" id="top">Step 3 of 3 — Draft &amp; refine</p>
 <div hx-ext="sse" sse-connect="/sessions/{{ s.id }}/events">
-  <div id="status-bar" sse-swap="model_loading,progress,error"></div>
+  <div id="status-bar" role="status" aria-live="polite" sse-swap="model_loading,progress,error"></div>
 
   {# Section cards. Refetched as a group when a background pass (Implement
      fixes / party) rewrites sections — sse:sections_updated fires only then. #}
@@ -14,12 +14,6 @@
     {% endfor %}
   </div>
 
-  {# QA appears here once drafting finishes (loads on job_done). #}
-  <div id="qa-area"
-       hx-get="/sessions/{{ s.id }}/qa"
-       hx-trigger="load, sse:job_done"
-       hx-swap="innerHTML"></div>
-
   <div id="party-region">
     {% if s.party_status != 'idle' %}{% include "partials/party_panel.html" %}{% endif %}
   </div>
@@ -27,6 +21,6 @@
   {# Fixed bottom bar; buttons appear/disappear as drafting completes. #}
   <div id="step3-actions"
        hx-get="/sessions/{{ s.id }}/step3-actions"
-       hx-trigger="load, sse:job_done, sse:qa_review_ready, sse:qa_fix_ready"
+       hx-trigger="load, sse:job_done"
        hx-swap="innerHTML"></div>
 </div>

@@ -8,7 +8,7 @@
               title="Minimize / expand"></button>
     </header>
     <div class="party-dock-body">
-      <div id="party-turn" class="party-turn" sse-swap="party_turn"></div>
+      <div id="party-turn" class="party-turn" role="status" aria-live="polite" sse-swap="party_turn"></div>
       <div id="party-chat" class="chat" sse-swap="party_msg" hx-swap="beforeend">
         {% include "partials/party_chat.html" %}
       </div>
