@@ -30,7 +30,7 @@ TIMING_RE = re.compile(r"^(total time:|throughput:|conversation history cleared)
 # blockquote line ("> ") that a chunk happens to pause on mid-generation.
 GEN_DONE_RE = re.compile(r"^(total time:|throughput:)", re.M)
 SETTLE_SECONDS = 1.0
-MARKER = "\n> "
+MARKER = config.PROMPT_MARKER
 
 
 def clean_output(raw: str) -> str:
