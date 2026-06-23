@@ -8,9 +8,13 @@ scrape the repo page. Best-effort throughout — a fetch failure never blocks
 drafting; it returns a short note instead.
 """
 
+import asyncio
 import base64
+import ipaddress
 import logging
 import re
+import socket
+from urllib.parse import urlparse
 
 import httpx
 
@@ -40,6 +44,12 @@ async def fetch_repo_context(url: str) -> str:
         # gopher://, etc. from being forwarded to the Firecrawl service.
         if not re.match(r"https?://", url, re.I):
             return f"(Won't fetch non-http(s) URL for repo context: {url})"
+        # SSRF guard: resolve the host and reject private / loopback /
+        # link-local / reserved targets before forwarding to Firecrawl, so the
+        # scraper can't be pointed at internal services.
+        if not await _host_is_public(url):
+            return (f"(Won't fetch repo context from a private or unresolvable "
+                    f"host: {url})")
         return await _firecrawl(url)
     except Exception as e:  # noqa: BLE001 — best-effort; surface as context note
         log.warning("repo fetch failed for %s: %s", url, e)
@@ -48,6 +58,30 @@ async def fetch_repo_context(url: str) -> str:
 
 def _clip(text: str) -> str:
     return text[: config.REPO_CONTEXT_MAX_CHARS]
+
+
+async def _host_is_public(url: str) -> bool:
+    """Resolve url's host and return False if any resolved address is private,
+    loopback, link-local, reserved, multicast, or unspecified (RFC1918,
+    127.0.0.0/8, 169.254.0.0/16, ::1, fc00::/7, etc.) — i.e. an SSRF target."""
+    host = urlparse(url).hostname
+    if not host:
+        return False
+    loop = asyncio.get_running_loop()
+    try:
+        infos = await loop.run_in_executor(None, socket.getaddrinfo, host, None)
+    except socket.gaierror:
+        return False  # unresolvable → don't forward
+    for info in infos:
+        raw_ip = info[4][0].split("%")[0]  # strip any IPv6 zone id
+        try:
+            addr = ipaddress.ip_address(raw_ip)
+        except ValueError:
+            return False
+        if (addr.is_private or addr.is_loopback or addr.is_link_local
+                or addr.is_reserved or addr.is_multicast or addr.is_unspecified):
+            return False
+    return True
 
 
 async def _github(owner: str, repo: str) -> str:

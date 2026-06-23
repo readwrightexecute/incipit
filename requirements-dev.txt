@@ -1,0 +1,4 @@
+-r requirements.txt
+
+# Test harness. Tests run fully offline (no network, no real LLM/subprocess).
+pytest==9.1.1

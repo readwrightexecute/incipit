@@ -36,6 +36,10 @@ Example endpoints (set the base URL in the settings panel):
 | llama-swap (tested: `qwen3.6:35b`) | `http://<host>:<port>/v1` | bearer |
 | OpenAI | `https://api.openai.com/v1` | required |
 
+Runtime endpoint changes are restricted to localhost, `api.openai.com`, and the
+host from `PROMPTGEN_OPENAI_BASE_URL` by default. For another trusted host, set
+`PROMPTGEN_ALLOWED_BASE_URL_HOSTS=host.example.com` before starting the app.
+
 > **"Disable thinking" toggle:** local reasoning models (Qwen, etc.) can burn the
 > whole token budget on a hidden think channel and return empty content. Turning
 > this on sends `chat_template_kwargs.enable_thinking=false`. Leave it **off** for

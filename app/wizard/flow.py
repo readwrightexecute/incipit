@@ -690,6 +690,7 @@ async def run_moonshot(s: Session) -> None:
     log an error event but the run still lands the user on the final page."""
     try:
         s.phase = "moonshot"
+        s.moonshot_status = "running"
         await _emit(s, "moon", "🌙 Reading your idea…")
         # Honor whatever the user picked on step 1; infer only the blanks.
         if not (s.stakes and s.form_factor and s.project_type):
@@ -702,6 +703,12 @@ async def run_moonshot(s: Session) -> None:
 
         await _emit(s, "moon", "❓ Drafting clarifying questions and accepting the smart defaults…")
         await run_clarify(s)  # answers left blank → each [ASSUMPTION] stands
+        # run_clarify records s.error and emits an 'error' event on failure but
+        # returns normally; without this guard the moonshot would draft every
+        # section from zero questions. Abort instead so the failure is terminal.
+        if not s.qas:
+            raise GenerationError(
+                s.error or "could not generate clarifying questions")
 
         init_sections(s)
         await _emit(s, "moon", "✍️ Drafting the spec sections…")
@@ -716,9 +723,11 @@ async def run_moonshot(s: Session) -> None:
             await apply_party_changes(s, pending)
 
         s.phase = "final"
+        s.moonshot_status = "done"
         await _emit(s, "moon", "✅ Done — opening your mega-prompt.")
     except Exception as e:
         log.exception("moonshot failed")
+        s.moonshot_status = "error"
         s.error = str(e)
         await _emit(s, "error", f"Shoot the Moon failed: {e}")
         if s.sections:

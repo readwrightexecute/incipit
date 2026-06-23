@@ -32,10 +32,49 @@ PROJECT_TYPES = [
 # flow.run_clarify / _infer_calibration) so it can't contradict the spec.
 DEFAULT_STAKES = "serious"
 
+# Server-side cap on free-text inputs (idea / refine instruction / answers) so a
+# pathological payload can't blow up prompt size or memory. Inputs longer than
+# this are silently truncated.
+MAX_INPUT_CHARS = 20_000
+
+
+def _cap(text: str) -> str:
+    """Truncate a free-text input to MAX_INPUT_CHARS."""
+    return text[:MAX_INPUT_CHARS]
+
+
+# (value, human label) for the settings reasoning-effort <select>. Values must
+# stay in sync with settings.REASONING_EFFORTS.
+REASONING_EFFORT_OPTIONS = [
+    ("default", "Default (model decides)"),
+    ("none", "Off (none)"),
+    ("low", "Low"),
+    ("medium", "Medium"),
+    ("high", "High"),
+]
+
 
 def _calibration_ctx() -> dict:
     """Option lists for the calibration controls on step 1."""
     return {"project_types": PROJECT_TYPES}
+
+
+def _settings_ctx(**extra) -> dict:
+    """Context for the settings panel that never echoes the stored API key.
+
+    Render an empty key field with a masked 'key set' hint instead, so the
+    secret is not reflected into the HTML. `extra` carries one-shot flags such
+    as error / saved."""
+    key = settings.current.api_key or ""
+    last4 = key[-4:] if len(key) >= 4 else ("•" * len(key))
+    return {
+        "cfg": settings.current,
+        "openai": config.BACKEND == "openai",
+        "has_api_key": bool(key),
+        "api_key_hint": last4,
+        "efforts": REASONING_EFFORT_OPTIONS,
+        **extra,
+    }
 
 
 def _render(name: str, request: Request, headers: dict | None = None, **ctx) -> HTMLResponse:
@@ -86,22 +125,26 @@ async def healthz() -> dict:
 
 @app.get("/settings", response_class=HTMLResponse)
 async def settings_panel(request: Request):
-    return _render("partials/settings.html", request, cfg=settings.current,
-                   openai=config.BACKEND == "openai")
+    return _render("partials/settings.html", request, **_settings_ctx())
 
 
 @app.post("/settings", response_class=HTMLResponse)
 async def settings_save(request: Request, base_url: str = Form(""),
                         model: str = Form(""), api_key: str = Form(""),
-                        disable_thinking: bool = Form(False)):
-    settings.update(base_url=base_url, model=model, api_key=api_key,
-                    disable_thinking=disable_thinking)
-    return _render("partials/settings.html", request, cfg=settings.current,
-                   openai=config.BACKEND == "openai", saved=True)
+                        reasoning_effort: str = Form("default")):
+    try:
+        settings.update(base_url=base_url, model=model, api_key=api_key,
+                        reasoning_effort=reasoning_effort)
+    except settings.SettingsError as e:
+        return _render("partials/settings.html", request,
+                       **_settings_ctx(error=str(e)))
+    return _render("partials/settings.html", request,
+                   **_settings_ctx(saved=True))
 
 
-@app.get("/settings/models", response_class=HTMLResponse)
-async def settings_models(request: Request, base_url: str = "", api_key: str = ""):
+@app.post("/settings/models", response_class=HTMLResponse)
+async def settings_models(request: Request, base_url: str = Form(""),
+                          api_key: str = Form("")):
     from app.llm.openai_compat import list_models
     try:
         models = await list_models(base_url, api_key)
@@ -159,7 +202,7 @@ async def go_back(request: Request, sid: str, to: str):
 async def create_session(request: Request, idea: str = Form(...),
                          project_type: str = Form(...), repo_url: str = Form("")):
     s = state.create()
-    s.idea = idea.strip()
+    s.idea = _cap(idea.strip())
     # form_factor is inferred from the idea in run_clarify; stakes is fixed.
     s.project_type, s.form_factor, s.stakes = project_type, "", DEFAULT_STAKES
     s.repo_url = repo_url.strip() if project_type == "existing" else ""
@@ -172,7 +215,7 @@ async def create_session(request: Request, idea: str = Form(...),
 async def moonshot(request: Request, idea: str = Form(...),
                    project_type: str = Form(""), repo_url: str = Form("")):
     s = state.create()
-    s.idea = idea.strip()
+    s.idea = _cap(idea.strip())
     # Honor the project_type the user set on step 1; run_moonshot infers the
     # rest (form factor always inferred now). Stakes is fixed to the default.
     s.project_type, s.form_factor, s.stakes = project_type, "", DEFAULT_STAKES
@@ -187,9 +230,9 @@ async def moon_status(sid: str):
     s = state.get(sid)
     if s is None:
         return Response(status_code=404)
-    # When the run lands (or errors out with partial output), tell htmx to
-    # navigate to the assembled result.
-    if s.phase == "final" or (s.error and s.phase != "moonshot"):
+    # Best-effort sub-steps can set s.error while the moonshot task continues.
+    # Redirect only after the task reaches a terminal state.
+    if s.phase == "final" or (s.error and s.moonshot_status == "error"):
         return Response(status_code=204, headers={"HX-Redirect": f"/sessions/{sid}"})
     return Response(status_code=204)
 
@@ -209,7 +252,7 @@ async def answers(request: Request, sid: str):
         return _render("expired.html", request)
     form = await request.form()
     for i, qa in enumerate(s.qas):
-        qa.answer = str(form.get(f"answer_{i}", "")).strip()
+        qa.answer = _cap(str(form.get(f"answer_{i}", "")).strip())
     # "Submit & Party" sets party=1: convene the round table once the draft lands.
     s.auto_party = bool(form.get("party"))
     flow.init_sections(s)
@@ -275,7 +318,7 @@ async def refine(request: Request, sid: str, section_id: str,
         # Flip status before rendering so the response is the self-refreshing
         # waiting card, not the inert done card (the task hasn't started yet).
         sec.status = "generating"
-    _spawn(flow.run_refine(s, section_id, instruction))
+    _spawn(flow.run_refine(s, section_id, _cap(instruction)))
     return _render("partials/section_card.html", request, s=s, sec=sec,
                    examples=flow.REFINE_EXAMPLES)
 
@@ -490,6 +533,13 @@ async def events(request: Request, sid: str):
                     yield ": keepalive\n\n"
                     continue
                 payload = json.dumps(ev["data"]) if not isinstance(ev["data"], str) else ev["data"]
+                # The `error` channel carries raw model/upstream text that the
+                # client innerHTML-swaps into #status-bar; escape it to prevent
+                # reflected XSS. Other channels (progress, model_loading, moon,
+                # party_msg) carry server-built trusted HTML and must not be
+                # escaped.
+                if ev["event"] == "error" and isinstance(ev["data"], str):
+                    payload = html.escape(payload)
                 # SSE requires one `data:` field per line; encode multiline
                 # payloads (e.g. error text) so newlines survive intact.
                 data = "".join(f"data: {line}\n" for line in payload.split("\n"))

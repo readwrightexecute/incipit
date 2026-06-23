@@ -7,6 +7,7 @@ the UI take effect on the next generation without a restart.
 
 import asyncio
 import logging
+import re
 
 import httpx
 
@@ -53,10 +54,18 @@ class OpenAIBackend:
             "messages": messages,
             "max_tokens": max_tokens,
         }
-        if cfg.disable_thinking:
+        effort = cfg.reasoning_effort
+        if effort == "none":
             # llama.cpp/Qwen-style reasoning models burn the budget on a hidden
             # think channel otherwise. OpenAI proper rejects this, so it is gated.
             body["chat_template_kwargs"] = {"enable_thinking": False}
+            # Ollama's OpenAI-compatible /v1/chat/completions ignores the native
+            # `think` field; `reasoning_effort: "none"` is what disables reasoning
+            # on this endpoint (maps internally to think=off).
+            body["reasoning_effort"] = "none"
+        elif effort in ("low", "medium", "high"):
+            body["reasoning_effort"] = effort
+        # "default": send neither key so the model uses its own default.
         async with self._lock:
             self.status = "generating"
             try:
@@ -74,6 +83,12 @@ class OpenAIBackend:
                     raise GenerationError(
                         f"unexpected response shape from {cfg.base_url}: {e}"
                     )
+                # Some endpoints (Ollama, llama.cpp) leak the reasoning trace
+                # inline as <think>...</think> even with thinking disabled;
+                # strip it so it never lands in the drafted spec.
+                content = re.sub(
+                    r"<\|?think\|?>.*?<\|?/think\|?>", "", content, flags=re.S
+                )
                 if not content.strip():
                     raise GenerationError("upstream returned empty content")
                 return content.strip()
@@ -89,8 +104,11 @@ class OpenAIBackend:
 
 
 async def list_models(base_url: str, api_key: str = "") -> list[str]:
-    """GET {base_url}/models for the settings UI. Raises GenerationError on failure."""
-    base_url = base_url.strip().rstrip("/")
+    """Request {base_url}/models for the settings UI. Raises GenerationError on failure."""
+    try:
+        base_url = settings.normalize_base_url(base_url)
+    except settings.SettingsError as e:
+        raise GenerationError(str(e))
     if not base_url:
         raise GenerationError("Enter a base URL first.")
     headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}

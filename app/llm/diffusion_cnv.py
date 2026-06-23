@@ -25,8 +25,12 @@ log = logging.getLogger("promptgen.cnv")
 
 ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]|\x1b\][^\x07]*\x07|\x1b[()][0-9A-B]")
 TIMING_RE = re.compile(r"^(total time:|throughput:|conversation history cleared)", re.M)
+# End-of-generation timing lines the CLI prints right before the next prompt
+# marker. Used to disambiguate the real marker from an in-content markdown
+# blockquote line ("> ") that a chunk happens to pause on mid-generation.
+GEN_DONE_RE = re.compile(r"^(total time:|throughput:)", re.M)
 SETTLE_SECONDS = 1.0
-MARKER = "\n> "
+MARKER = config.PROMPT_MARKER
 
 
 def clean_output(raw: str) -> str:
@@ -42,17 +46,18 @@ class DiffusionCnvBackend:
         self._idle_task: asyncio.Task | None = None
         self._stderr_task: asyncio.Task | None = None
         self._system: str | None = None
+        self._max_tokens: int | None = None
         self._stderr_tail: deque[str] = deque(maxlen=40)
         self.status = "cold"  # cold | loading | ready | generating
 
-    def _build_cmd(self) -> list[str]:
+    def _build_cmd(self, max_tokens: int) -> list[str]:
         cmd = [
             config.CLI_BIN,
             "-m", config.MODEL_PATH,
             "-ngl", config.N_GPU_LAYERS,
             "--n-cpu-moe", config.N_CPU_MOE,
             "-cnv",
-            "-n", str(config.MAX_TOKENS),
+            "-n", str(max_tokens),
             "--threads", config.THREADS,
             *config.DIFFUSION_ARGS,
         ]
@@ -60,11 +65,11 @@ class DiffusionCnvBackend:
             cmd += ["-sys", self._system]
         return cmd
 
-    async def _ensure_proc(self) -> asyncio.subprocess.Process:
+    async def _ensure_proc(self, max_tokens: int) -> asyncio.subprocess.Process:
         if self._proc is not None and self._proc.returncode is None:
             return self._proc
         self.status = "loading"
-        cmd = self._build_cmd()
+        cmd = self._build_cmd(max_tokens)
         log.info("spawning llama-diffusion-cli (model load may take minutes)")
         self._stderr_tail.clear()
         try:
@@ -89,6 +94,7 @@ class DiffusionCnvBackend:
             await self.shutdown()
             raise GenerationError(f"model load failed or timed out: {tail}")
         self.status = "ready"
+        self._max_tokens = max_tokens
         return self._proc
 
     async def _drain_stderr(self, proc: asyncio.subprocess.Process) -> None:
@@ -109,9 +115,16 @@ class DiffusionCnvBackend:
         tail = errs[-3:] if errs else list(self._stderr_tail)[-3:]
         return " | ".join(tail) if tail else "(no stderr captured)"
 
-    async def _read_until_marker(self, timeout: float) -> str:
+    async def _read_until_marker(self, timeout: float,
+                                 require_timing: bool = False) -> str:
         """Read stdout until the cleaned buffer ends with the turn marker
-        ('\\n> ') and output has settled for SETTLE_SECONDS."""
+        ('\\n> ') and output has settled for SETTLE_SECONDS.
+
+        When require_timing is set (a real generation), also require the CLI's
+        end-of-generation timing line ('total time:'/'throughput:') to have
+        appeared first. Otherwise a response whose chunk ends on a markdown
+        blockquote line ('> ') during a settle pause would be mistaken for the
+        prompt marker and truncated."""
         assert self._proc is not None and self._proc.stdout is not None
         buf = b""
         loop = asyncio.get_running_loop()
@@ -133,7 +146,9 @@ class DiffusionCnvBackend:
             except asyncio.TimeoutError:
                 # No new bytes for a settle window — check for the marker.
                 text = clean_output(buf.decode("utf-8", errors="replace"))
-                if text.endswith(MARKER):
+                if text.endswith(MARKER) and (
+                    not require_timing or GEN_DONE_RE.search(text)
+                ):
                     return text
 
     async def _write_line(self, line: str) -> None:
@@ -161,6 +176,8 @@ class DiffusionCnvBackend:
         # System prompt is fixed at spawn time via -sys; all callers pass the
         # same one (flow.SYSTEM). A changed non-None system forces a respawn;
         # system=None (party mode) intentionally reuses the running process.
+        # The CLI also receives -n only at spawn, so token-limit changes respawn.
+        token_limit = min(max_tokens, config.MAX_TOKENS)
         flat = prompt.replace("\r", " ").replace("\n", "\\n")
         async with self._lock:
             if self._idle_task is not None:
@@ -170,12 +187,16 @@ class DiffusionCnvBackend:
                     if self._proc is not None:
                         await self.shutdown()
                     self._system = system
-                await self._ensure_proc()
+                if token_limit != self._max_tokens:
+                    if self._proc is not None:
+                        await self.shutdown()
+                await self._ensure_proc(token_limit)
                 self.status = "generating"
                 await self._write_line("/clear")
                 await self._read_until_marker(timeout=30)
                 await self._write_line(flat)
-                raw = await self._read_until_marker(timeout=config.GEN_TIMEOUT)
+                raw = await self._read_until_marker(timeout=config.GEN_TIMEOUT,
+                                                    require_timing=True)
             except GenerationError:
                 await self.shutdown()
                 raise
@@ -204,6 +225,7 @@ class DiffusionCnvBackend:
 
     async def shutdown(self) -> None:
         proc, self._proc = self._proc, None
+        self._max_tokens = None
         self.status = "cold"
         if self._stderr_task is not None:
             self._stderr_task.cancel()
