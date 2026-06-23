@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <script id="session-meta" type="application/json">{"id": "{{ s.id }}", "idea": {{ s.idea|tojson }}, "phase": "{{ s.phase }}"}</script>
-<p class="step-label">Your Super-Prompt</p>
+<h2 class="step-label" data-step="final">Your Super-Prompt</h2>
 <div>
   <div class="action-bar">
     <button id="copy-btn" onclick="copyPrompt()" aria-live="polite">Copy to clipboard</button>

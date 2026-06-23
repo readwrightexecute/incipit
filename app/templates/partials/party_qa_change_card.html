@@ -1,11 +1,11 @@
 <div id="qachange-{{ ch.id }}" class="change-card {{ ch.status }}">
   <article>
     {% if ch.kind == 'add_question' %}
-    <header><h3 style="font-size:1rem">➕ New question</h3></header>
+    <header><h3>➕ New question</h3></header>
     <p style="margin-bottom:.3rem">{{ ch.question }}</p>
     <p class="assumption" style="margin-bottom:.5rem">Default if skipped: {{ ch.assumption }}</p>
     {% else %}
-    <header><h3 style="font-size:1rem">💡 Suggested answer to Q{{ ch.target + 1 }}</h3></header>
+    <header><h3>💡 Suggested answer to Q{{ ch.target + 1 }}</h3></header>
     <p style="margin-bottom:.3rem">{{ ch.answer }}</p>
     {% endif %}
     {% if ch.rationale %}<p class="assumption" style="margin-bottom:.5rem">Why: {{ ch.rationale }}</p>{% endif %}

@@ -1,5 +1,10 @@
 <article id="settings-panel">
-  <header><strong>Settings</strong> — model endpoint</header>
+  <header style="display:flex;align-items:center;justify-content:space-between;gap:.5rem">
+    <span><strong>Settings</strong> — model endpoint</span>
+    <button type="button" class="secondary outline" aria-label="Close settings"
+            style="width:auto;margin:0;padding:.1rem .6rem;line-height:1.2"
+            onclick="document.getElementById('settings-region').innerHTML=''">✕</button>
+  </header>
   {% if not openai %}
     <p class="assumption">A diffusion backend is active; these settings apply only to the
       OpenAI-compatible backend (set <code>PROMPTGEN_BACKEND=openai</code>).</p>

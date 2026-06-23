@@ -29,6 +29,9 @@
 <div id="section-{{ sec.id }}">
   <article>
     <header><h3>{{ sec.title }}</h3></header>
+    {# Click the content to edit (mouse); the focusable "✎ Edit text" chip is
+       the keyboard path. NB: do NOT put role="button" on these — Pico styles
+       any [role=button] as a full button (centered text + button chrome). #}
     <div class="section-content" style="cursor:pointer" title="Click to edit"
          hx-get="/sessions/{{ s.id }}/sections/{{ sec.id }}/edit"
          hx-target="#section-{{ sec.id }}" hx-swap="outerHTML">{{ sec.content }}</div>

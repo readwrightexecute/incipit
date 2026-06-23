@@ -2,7 +2,7 @@
      {% if ch.status == 'applying' %}hx-get="/sessions/{{ s.id }}/party/changes/{{ ch.id }}"
      hx-trigger="sse:party_changed, every 3s" hx-swap="outerHTML"{% endif %}>
   <article>
-    <header><h3 style="font-size:1rem">{{ ch.section_title }}</h3></header>
+    <header><h3>{{ ch.section_title }}</h3></header>
     <p style="margin-bottom:.3rem">{{ ch.instruction }}</p>
     {% if ch.rationale %}<p class="assumption" style="margin-bottom:.5rem">Why: {{ ch.rationale }}</p>{% endif %}
     {% if ch.status == 'pending' %}
