@@ -68,11 +68,28 @@ OPENAI_BASE_URL = os.environ.get("PROMPTGEN_OPENAI_BASE_URL", "http://localhost:
 OPENAI_MODEL = os.environ.get("PROMPTGEN_OPENAI_MODEL", "")
 OPENAI_API_KEY = os.environ.get("PROMPTGEN_OPENAI_API_KEY", "")
 
-# Send `chat_template_kwargs.enable_thinking=false` to suppress reasoning output.
-# Works on llama.cpp/Qwen-style servers; OpenAI proper rejects it, so default
-# OFF for portability. Enable for local reasoning models that burn the token
-# budget on a hidden think channel.
-DISABLE_THINKING = os.environ.get("PROMPTGEN_DISABLE_THINKING", "").lower() in ("1", "true", "yes")
+# Reasoning effort sent to the OpenAI-compatible endpoint. One of:
+#   default          - omit the field entirely (the model decides)
+#   none             - reasoning_effort="none" (+ enable_thinking=false for llama.cpp)
+#   low | medium | high - reasoning_effort=<level>
+# Seeds the runtime setting (app/settings.py); the UI can override it live.
+# Only the OpenAI-compatible backend reads this; the diffusion backends ignore it.
+# Back-compat: the older PROMPTGEN_DISABLE_THINKING boolean maps truthy -> "none".
+_REASONING_EFFORTS = ("default", "none", "low", "medium", "high")
+
+
+def _reasoning_effort_default() -> str:
+    val = os.environ.get("PROMPTGEN_REASONING_EFFORT", "").strip().lower()
+    if val in _REASONING_EFFORTS:
+        return val
+    if val:
+        return "default"  # unrecognized explicit value -> safe default
+    if os.environ.get("PROMPTGEN_DISABLE_THINKING", "").lower() in ("1", "true", "yes"):
+        return "none"
+    return "default"
+
+
+REASONING_EFFORT = _reasoning_effort_default()
 
 # Session housekeeping
 SESSION_TTL = _int("PROMPTGEN_SESSION_TTL", 24 * 3600)

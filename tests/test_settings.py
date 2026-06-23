@@ -9,9 +9,11 @@ import pytest
 
 from app import settings
 from app.settings import (
+    REASONING_EFFORTS,
     SettingsError,
     allowed_base_url_hosts,
     normalize_base_url,
+    normalize_effort,
 )
 
 
@@ -144,3 +146,27 @@ def test_normalize_off_allowlist_takes_precedence_only_after_scheme_check():
     # A non-http scheme is rejected regardless of host allow-listing.
     with pytest.raises(SettingsError):
         normalize_base_url("ftp://localhost/v1")
+
+
+# --- normalize_effort: reasoning-effort selector ---------------------------
+
+@pytest.mark.parametrize("value", REASONING_EFFORTS)
+def test_normalize_effort_accepts_all_allowed_values(value):
+    assert normalize_effort(value) == value
+
+
+def test_normalize_effort_is_case_insensitive_and_trims():
+    assert normalize_effort("  HIGH ") == "high"
+
+
+@pytest.mark.parametrize("value", ["", "   ", "bogus", "off", "true", "1"])
+def test_normalize_effort_falls_back_to_default(value):
+    # A blank/unrecognized value (stale file or tampered request) coerces to
+    # "default" rather than raising — the input is a constrained <select>.
+    assert normalize_effort(value) == "default"
+
+
+def test_reasoning_efforts_set_is_stable():
+    # The settings dropdown (app/main.py REASONING_EFFORT_OPTIONS) and the
+    # openai backend depend on this exact set/order.
+    assert REASONING_EFFORTS == ("default", "none", "low", "medium", "high")

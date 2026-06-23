@@ -43,16 +43,28 @@ def _cap(text: str) -> str:
     return text[:MAX_INPUT_CHARS]
 
 
+# (value, human label) for the settings reasoning-effort <select>. Values must
+# stay in sync with settings.REASONING_EFFORTS.
+REASONING_EFFORT_OPTIONS = [
+    ("default", "Default (model decides)"),
+    ("none", "Off (none)"),
+    ("low", "Low"),
+    ("medium", "Medium"),
+    ("high", "High"),
+]
+
+
 def _calibration_ctx() -> dict:
     """Option lists for the calibration controls on step 1."""
     return {"project_types": PROJECT_TYPES}
 
 
-def _settings_ctx() -> dict:
+def _settings_ctx(**extra) -> dict:
     """Context for the settings panel that never echoes the stored API key.
 
     Render an empty key field with a masked 'key set' hint instead, so the
-    secret is not reflected into the HTML."""
+    secret is not reflected into the HTML. `extra` carries one-shot flags such
+    as error / saved."""
     key = settings.current.api_key or ""
     last4 = key[-4:] if len(key) >= 4 else ("•" * len(key))
     return {
@@ -60,6 +72,8 @@ def _settings_ctx() -> dict:
         "openai": config.BACKEND == "openai",
         "has_api_key": bool(key),
         "api_key_hint": last4,
+        "efforts": REASONING_EFFORT_OPTIONS,
+        **extra,
     }
 
 
@@ -117,15 +131,15 @@ async def settings_panel(request: Request):
 @app.post("/settings", response_class=HTMLResponse)
 async def settings_save(request: Request, base_url: str = Form(""),
                         model: str = Form(""), api_key: str = Form(""),
-                        disable_thinking: bool = Form(False)):
+                        reasoning_effort: str = Form("default")):
     try:
         settings.update(base_url=base_url, model=model, api_key=api_key,
-                        disable_thinking=disable_thinking)
+                        reasoning_effort=reasoning_effort)
     except settings.SettingsError as e:
-        return _render("partials/settings.html", request, error=str(e),
-                       **_settings_ctx())
-    return _render("partials/settings.html", request, saved=True,
-                   **_settings_ctx())
+        return _render("partials/settings.html", request,
+                       **_settings_ctx(error=str(e)))
+    return _render("partials/settings.html", request,
+                   **_settings_ctx(saved=True))
 
 
 @app.post("/settings/models", response_class=HTMLResponse)

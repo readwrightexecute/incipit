@@ -34,11 +34,15 @@
     </label>
     {% if has_api_key %}<small class="assumption">🔑 key set (ends …{{ api_key_hint }}) — leave blank to keep it; type a new key to replace it.</small>{% endif %}
 
-    <label for="disable_thinking">
-      <input type="checkbox" id="disable_thinking" name="disable_thinking" role="switch"
-        {% if cfg.disable_thinking %}checked{% endif %}>
-      Disable model "thinking" <span class="assumption">(local reasoning models only; OpenAI rejects this)</span>
+    <label for="reasoning_effort">Reasoning effort
+      <select id="reasoning_effort" name="reasoning_effort">
+        {% for value, label in efforts %}
+        <option value="{{ value }}"{% if cfg.reasoning_effort == value %} selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
     </label>
+    <small class="assumption">Local reasoning models only. <code>Off</code> disables thinking
+      (qwen3/deepseek); gpt-oss only honors low/medium/high. <code>Default</code> lets the model decide.</small>
 
     <button type="submit">Save settings</button>
     {% if saved %}<span class="assumption">✓ Saved — next generation uses these.</span>{% endif %}
