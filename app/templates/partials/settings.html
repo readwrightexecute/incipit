@@ -9,6 +9,7 @@
     <p class="assumption">A diffusion backend is active; these settings apply only to the
       OpenAI-compatible backend (set <code>PROMPTGEN_BACKEND=openai</code>).</p>
   {% endif %}
+  {% if error %}<p class="error">{{ error }}</p>{% endif %}
   <form hx-post="/settings" hx-target="#settings-panel" hx-swap="outerHTML">
     <label for="base_url">Endpoint base URL
       <input type="text" id="base_url" name="base_url" value="{{ cfg.base_url }}"
@@ -23,14 +24,15 @@
     </label>
     <datalist id="model-options"></datalist>
     <button type="button" class="secondary" style="width:auto"
-      hx-get="/settings/models" hx-include="#base_url,#api_key"
+      hx-post="/settings/models" hx-include="#base_url,#api_key"
       hx-target="#model-status" hx-swap="innerHTML">Test / list models</button>
     <span id="model-status" class="assumption"></span>
 
     <label for="api_key">API key <span class="assumption">(blank for local servers)</span>
-      <input type="password" id="api_key" name="api_key" value="{{ cfg.api_key }}"
-        placeholder="sk-… (only for OpenAI / authed endpoints)">
+      <input type="password" id="api_key" name="api_key" value=""
+        placeholder="{% if has_api_key %}leave blank to keep current key{% else %}sk-… (only for OpenAI / authed endpoints){% endif %}">
     </label>
+    {% if has_api_key %}<small class="assumption">🔑 key set (ends …{{ api_key_hint }}) — leave blank to keep it; type a new key to replace it.</small>{% endif %}
 
     <label for="disable_thinking">
       <input type="checkbox" id="disable_thinking" name="disable_thinking" role="switch"

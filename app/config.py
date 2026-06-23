@@ -1,5 +1,6 @@
 """Environment-driven settings. Every knob has a PROMPTGEN_* env override."""
 
+import logging
 import os
 import shlex
 
@@ -10,9 +11,20 @@ try:
 except ImportError:
     pass
 
+log = logging.getLogger("promptgen.config")
+
 
 def _int(name: str, default: int) -> int:
-    return int(os.environ.get(name, default))
+    """Parse an int env override, falling back to default on a bad value so a
+    typo in one env var can't crash the process at import time."""
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        log.warning("invalid integer for %s=%r; using default %d", name, raw, default)
+        return default
 
 
 # Backend selection: openai | diffusion-cnv | diffusion-oneshot

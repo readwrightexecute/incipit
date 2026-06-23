@@ -89,8 +89,11 @@ class OpenAIBackend:
 
 
 async def list_models(base_url: str, api_key: str = "") -> list[str]:
-    """GET {base_url}/models for the settings UI. Raises GenerationError on failure."""
-    base_url = base_url.strip().rstrip("/")
+    """Request {base_url}/models for the settings UI. Raises GenerationError on failure."""
+    try:
+        base_url = settings.normalize_base_url(base_url)
+    except settings.SettingsError as e:
+        raise GenerationError(str(e))
     if not base_url:
         raise GenerationError("Enter a base URL first.")
     headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}

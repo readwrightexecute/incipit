@@ -76,7 +76,8 @@ class Session:
     repo_context: str = ""   # fetched repo summary injected into drafting prompts
     qas: list[QA] = field(default_factory=list)
     sections: list[Section] = field(default_factory=list)
-    phase: str = "idea"  # idea | clarify | sections | final
+    phase: str = "idea"  # idea | clarify | sections | moonshot | final
+    moonshot_status: str = "idle"  # idle | running | done | error
     # Party mode (round-table review on the final spec).
     auto_party: bool = False  # set by "Submit & Party": convene the round table once the draft lands
     party_status: str = "idle"  # idle | running | ready | error
