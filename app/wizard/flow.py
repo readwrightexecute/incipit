@@ -191,6 +191,14 @@ def init_sections(s: Session) -> None:
         for row in SECTIONS_SCHEMA
     ]
     s.phase = "sections"
+    # The step-2 QA round table shares party_status/party_messages with the
+    # step-3 section round table. A finished QA party leaves party_status at
+    # "ready", which would make the section panel render prematurely on step 3
+    # ("deliberating…" + "proposed no changes") before it has ever run. Reset
+    # the shared section-party state on entry so step 3 starts clean.
+    s.party_status = "idle"
+    s.party_messages = []
+    s.party_changes = []
 
 
 async def run_sections(s: Session) -> None:
