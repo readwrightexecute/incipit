@@ -1,5 +1,5 @@
 <script id="session-meta" type="application/json">{"id": "{{ s.id }}", "idea": {{ s.idea|tojson }}, "phase": "{{ s.phase }}"}</script>
-<p class="step-label">Step 2 of 3 — Clarify</p>
+<h2 class="step-label" data-step="clarify">Step 2 of 3 — Clarify</h2>
 <div hx-ext="sse" sse-connect="/sessions/{{ s.id }}/events">
   <div id="status-bar" role="status" aria-live="polite" sse-swap="model_loading,progress,error">{% if not s.qas %}<span class="spinner" data-anim="stars"></span> Thinking up the right questions…{% endif %}</div>
   {% include "partials/question_list.html" %}

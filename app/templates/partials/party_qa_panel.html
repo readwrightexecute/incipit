@@ -4,7 +4,9 @@
     <header class="party-dock-head">
       <strong>🎉 Question review</strong>
       <button type="button" class="party-dock-toggle"
-              onclick="document.getElementById('party-dock').classList.toggle('collapsed')"
+              aria-label="Minimize or expand the round-table dock"
+              aria-controls="party-dock" aria-expanded="true"
+              onclick="this.setAttribute('aria-expanded', String(!document.getElementById('party-dock').classList.toggle('collapsed')))"
               title="Minimize / expand"></button>
     </header>
     <div class="party-dock-body">
@@ -20,7 +22,7 @@
     🎉 The round table is reviewing your questions in the chat (corner). Suggested
     questions and answers will appear here — approving drops them into the form above.
   </p>
-  <div id="party-qa-changes"
+  <div id="party-qa-changes" aria-live="polite"
        hx-get="/sessions/{{ s.id }}/party-questions/changes"
        hx-trigger="load, sse:party_ready, sse:party_changed, every 4s"
        hx-swap="innerHTML"></div>

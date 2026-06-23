@@ -1,5 +1,5 @@
 <script id="session-meta" type="application/json">{"id": "{{ s.id }}", "idea": {{ s.idea|tojson }}, "phase": "{{ s.phase }}"}</script>
-<p class="step-label">🌙 Shoot the Moon</p>
+<h2 class="step-label" data-step="moonshot">🌙 Shoot the Moon</h2>
 <div hx-ext="sse" sse-connect="/sessions/{{ s.id }}/events">
   <p><span class="spinner"></span> Running the whole thing on your idea — calibration,
     smart-default answers, a full spec draft, then a BMAD round table whose consensus
