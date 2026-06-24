@@ -469,9 +469,13 @@ async def _round_table(s: Session, subject: str,
                 turns += 1
 
 
-async def run_party(s: Session) -> None:
+async def run_party(s: Session, *, auto_apply: bool = False) -> None:
     """Orchestrate the round table: opening round → facilitator-driven
-    mic-passing until consensus → synthesize approvable changes."""
+    mic-passing until consensus → synthesize approvable changes.
+
+    `auto_apply` only changes the consensus message wording: the moonshot flow
+    applies the agreed changes itself (no manual review), so we say "applied
+    automatically" instead of telling the user to review them below."""
     try:
         s.party_status = "running"
         s.party_messages = []
@@ -496,10 +500,15 @@ async def run_party(s: Session) -> None:
         s.party_status = "ready"
         await _emit(s, "party_turn", "")
         n = len(s.party_changes)
-        await _say(s, PartyMessage("system", "", "", "",
-            f"✅ Consensus reached — {n} proposed change{'' if n == 1 else 's'}. "
-            "Review them below." if n else
-            "✅ The group reviewed the spec and proposed no changes.", "system"))
+        if not n:
+            consensus_msg = "✅ The group reviewed the spec and proposed no changes."
+        else:
+            changes = f"{n} proposed change{'' if n == 1 else 's'}"
+            # Moonshot auto-applies the consensus; the normal flow waits for the
+            # user to review/approve each change below.
+            tail = ", applied automatically." if auto_apply else ". Review them below."
+            consensus_msg = f"✅ Consensus reached — {changes}{tail}"
+        await _say(s, PartyMessage("system", "", "", "", consensus_msg, "system"))
         await _emit(s, "party_ready")
     except Exception as e:
         log.exception("party mode failed")
@@ -715,7 +724,7 @@ async def run_moonshot(s: Session) -> None:
         await run_sections(s)
 
         await _emit(s, "moon", "🎉 Convening the BMAD round table…")
-        await run_party(s)
+        await run_party(s, auto_apply=True)
 
         pending = [c.id for c in s.party_changes if c.status == "pending"]
         if pending:
