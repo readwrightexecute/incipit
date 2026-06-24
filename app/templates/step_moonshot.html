@@ -5,7 +5,9 @@
     smart-default answers, a full spec draft, then a BMAD round table whose consensus
     is applied automatically. This takes a few minutes; watch it unfold below.</p>
 
-  <div id="status-bar" role="status" aria-live="polite" sse-swap="model_loading,progress,moon,error"></div>
+  {# Cold-start graphic on first paint; the live SSE feed (moon steps + model
+     heartbeat) replaces it as soon as the stream connects. #}
+  <div id="status-bar" role="status" aria-live="polite" sse-swap="model_loading,progress,moon,error"><span class="spinner" data-anim="pulse"></span> Loading model (cold start, can take a minute)…</div>
   <div id="party-turn" class="party-turn" role="status" aria-live="polite" sse-swap="party_turn"></div>
 
   <div id="party-chat" class="chat" sse-swap="party_msg" hx-swap="beforeend">

@@ -22,6 +22,11 @@ class OpenAIBackend:
         self._lock = asyncio.Lock()
         self._client: httpx.AsyncClient | None = None
         self.status = "ready"
+        # Last model we successfully generated with. A mismatch (or None on the
+        # first call) means the endpoint has to load/switch the model on this
+        # request — a cold start that can block for a long time — so we surface
+        # status="loading" and the UI shows a "loading model" graphic.
+        self._loaded_model: str | None = None
 
     def _http(self) -> httpx.AsyncClient:
         # Reuse one client so HTTP keep-alive/connection pooling survives across
@@ -67,7 +72,11 @@ class OpenAIBackend:
             body["reasoning_effort"] = effort
         # "default": send neither key so the model uses its own default.
         async with self._lock:
-            self.status = "generating"
+            # A model switch (or the very first call) makes llama-swap / Ollama
+            # load the model on this request, which can block for a minute. Flag
+            # it as a cold start so the heartbeat renders the "loading model"
+            # graphic instead of a generic "working…" spinner.
+            self.status = "loading" if cfg.model != self._loaded_model else "generating"
             try:
                 r = await self._http().post(
                     f"{cfg.base_url}/chat/completions",
@@ -91,6 +100,9 @@ class OpenAIBackend:
                 )
                 if not content.strip():
                     raise GenerationError("upstream returned empty content")
+                # Remember the now-loaded model so the next call with the same
+                # model isn't mistaken for another cold start.
+                self._loaded_model = cfg.model
                 return content.strip()
             except httpx.RequestError as e:
                 raise GenerationError(f"could not reach {cfg.base_url}: {e}")
