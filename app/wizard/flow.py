@@ -67,13 +67,31 @@ def _ctx(s: Session) -> dict:
 
 
 async def _ensure_repo_context(s: Session) -> None:
-    """For existing projects with a repo link, fetch a compact codebase summary
-    once and cache it on the session so it can ground clarify + drafting."""
-    if s.repo_context or s.project_type != "existing" or not s.repo_url:
+    """For existing projects, fetch a compact codebase summary once and cache it
+    on the session so it can ground clarify + drafting. Combines any private
+    repos the user picked after signing in with GitHub (fetched with their
+    server-side token) and the no-login repo_url fallback, token-budgeted by
+    config.REPO_CONTEXT_MAX_CHARS so the prompt can't blow up."""
+    if s.repo_context or s.project_type != "existing":
+        return
+    if not s.selected_repos and not s.repo_url:
         return
     await _emit(s, "progress",
                 '<span class="spinner" data-anim="pulse"></span> Reading the repo…')
-    s.repo_context = await repo.fetch_repo_context(s.repo_url)
+    budget = config.REPO_CONTEXT_MAX_CHARS
+    parts: list[str] = []
+    for full_name in s.selected_repos:
+        if budget <= 0:
+            break
+        ctx = (await repo.fetch_selected_repo_context(full_name, s.github_token))[:budget]
+        if ctx:
+            parts.append(ctx)
+            budget -= len(ctx)
+    if s.repo_url and budget > 0:
+        ctx = (await repo.fetch_repo_context(s.repo_url))[:budget]
+        if ctx:
+            parts.append(ctx)
+    s.repo_context = "\n\n---\n\n".join(parts)
     await _emit(s, "progress", "")
 
 
