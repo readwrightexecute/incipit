@@ -127,6 +127,26 @@ GITHUB_OAUTH_REDIRECT_URL = os.environ.get(
     "https://incipit.nexus.inmotionhosting.com/auth/github/callback")
 GITHUB_OAUTH_SCOPES = os.environ.get("INCIPIT_GITHUB_OAUTH_SCOPES", "repo")
 
+# --- Atlassian (Jira) OAuth 2.0 / 3LO ("Sign in with Atlassian") -----------
+# Per-user Jira export: each user authorizes their own Atlassian site. The
+# access + refresh tokens and the resolved cloudId / site live server-side only
+# (app/auth.py); the browser cookie carries just the signed, opaque session id.
+# CLIENT_ID is the public, registered OAuth-app id (not a secret); CLIENT_SECRET
+# must come from the environment (Doppler/Vault) and must never be committed.
+# `offline_access` is appended to the scope at request time (not configured
+# here) so Atlassian returns a refresh token. Blank client id/secret disables
+# the "Sign in with Atlassian" button.
+ATLASSIAN_OAUTH_CLIENT_ID = os.environ.get(
+    "INCIPIT_ATLASSIAN_OAUTH_CLIENT_ID", "gp295kGiSA32NqMPoeQCwMmbSTI8wjtp")
+ATLASSIAN_OAUTH_CLIENT_SECRET = os.environ.get(
+    "INCIPIT_ATLASSIAN_OAUTH_CLIENT_SECRET", "")
+ATLASSIAN_OAUTH_REDIRECT_URL = os.environ.get(
+    "INCIPIT_ATLASSIAN_OAUTH_REDIRECT_URL",
+    "https://incipit.nexus.inmotionhosting.com/auth/atlassian/callback")
+ATLASSIAN_OAUTH_SCOPES = os.environ.get(
+    "INCIPIT_ATLASSIAN_OAUTH_SCOPES",
+    "read:jira-work write:jira-work read:jira-user")
+
 # Secret used to sign the opaque session-id cookie (itsdangerous). If unset we
 # generate an ephemeral per-process secret: cookies then work within a single
 # run but don't survive a restart — acceptable for the single-replica design,

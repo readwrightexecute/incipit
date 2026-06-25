@@ -9,6 +9,25 @@
     <a href="/" role="button" class="contrast outline">New session</a>
   </div>
   <div class="section-content" id="mega-prompt">{{ mega_prompt }}</div>
+
+  {% if atlassian_configured %}
+  <div id="jira-export" class="jira-export">
+    <h3 class="jira-heading">Export to Jira</h3>
+    {% if atlassian_connected %}
+      <p class="jira-chip">
+        <span class="jira-dot" aria-hidden="true"></span>
+        Connected to Atlassian{% if atlassian_site %} · <strong>{{ atlassian_site }}</strong>{% endif %}
+        <button type="button" class="secondary outline jira-disconnect"
+                hx-post="/auth/atlassian/logout" hx-swap="none">Disconnect</button>
+      </p>
+      {% block jira_export_controls %}{% endblock %}
+    {% else %}
+      <p class="jira-hint">Sign in with your own Atlassian account to push this brief into a Jira issue.</p>
+      <a role="button" class="secondary"
+         href="/auth/atlassian/login?return_to=/sessions/{{ s.id }}">Sign in with Atlassian</a>
+    {% endif %}
+  </div>
+  {% endif %}
 </div>
 <script>
 function copyPrompt() {

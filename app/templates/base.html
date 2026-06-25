@@ -209,6 +209,21 @@
     main.container { padding-bottom: 5.5rem; } /* clear the fixed action bar */
     .final-actions { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; }
     .final-actions button, .final-actions a[role="button"] { margin-bottom: 0; }
+    /* ---- Jira export (final step) ---- */
+    .jira-export { margin-top: 1.25rem; padding: .9rem 1rem; border: 1px solid var(--pico-card-border-color);
+      border-radius: var(--pico-border-radius); background: var(--pico-card-background-color); }
+    .jira-heading { font-size: 1rem; margin: 0 0 .5rem; }
+    .jira-hint { color: var(--pico-muted-color); font-size: var(--fs-sm); margin: 0 0 .6rem; }
+    .jira-chip { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; font-size: var(--fs-sm); margin: 0 0 .6rem; }
+    .jira-dot { width: .55rem; height: .55rem; border-radius: 50%; background: var(--success); flex: 0 0 auto; }
+    .jira-disconnect { margin: 0 0 0 auto; width: auto; padding: .15rem .7rem; font-size: var(--fs-xs); }
+    .jira-controls { display: flex; gap: .5rem; flex-wrap: wrap; align-items: flex-end; }
+    .jira-controls label { font-size: var(--fs-sm); margin: 0; }
+    .jira-controls select { margin-bottom: 0; min-width: 12rem; }
+    .jira-controls .jira-go { width: auto; margin: 0; }
+    .jira-result { margin-top: .7rem; font-size: var(--fs-sm); }
+    .jira-result.ok { color: var(--success); }
+    .jira-result.error { color: var(--danger); }
     /* State reads as a full-border + faint tint on the inner card, not a side stripe. */
     .change-card article { transition: border-color .15s, background .15s; }
     .change-card.applied article { border-color: color-mix(in srgb, var(--success) 50%, var(--pico-card-border-color));

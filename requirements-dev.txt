@@ -2,5 +2,5 @@
 
 # Test harness. Tests run fully offline (no network, no real LLM/subprocess).
 pytest==9.1.1
-# Mocked HTTP transport for httpx (repo-fetch / OAuth end-to-end tests).
+# Mocked HTTP transport for httpx (repo-fetch / OAuth login/callback + Jira REST tests).
 respx==0.22.0
