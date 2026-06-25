@@ -7,15 +7,22 @@ in this file makes a real DNS or HTTP call.
 """
 
 import asyncio
+import base64
 import socket
 
+import httpx
 import pytest
+import respx
 
-from app import repo
+from app import config, repo
 
 
 def _run(coro):
     return asyncio.run(coro)
+
+
+def _b64(text: str) -> str:
+    return base64.b64encode(text.encode("utf-8")).decode("ascii")
 
 
 def _addrinfo(*ips):
@@ -193,3 +200,153 @@ def test_fetch_never_raises_on_internal_error(monkeypatch):
     out = _run(repo.fetch_repo_context("https://github.com/owner/repo"))
     assert "Could not fetch repo context" in out
     assert "kaboom" in out
+
+
+# --- _github / _firecrawl end-to-end (mocked HTTP) --------------------------
+#
+# These drive the real httpx code paths in app/repo.py against a respx-mocked
+# transport — no DNS, no sockets. They cover the full GitHub
+# meta→languages→readme→tree→_summarize path and the private-repo→Firecrawl
+# fallback, complementing the routing tests above (which stub _github/_firecrawl
+# entirely).
+
+_GH_BASE = "https://api.github.com/repos/owner/repo"
+
+
+def _mock_github_full():
+    """Register the four GitHub REST endpoints for a healthy public repo."""
+    respx.get(_GH_BASE).mock(return_value=httpx.Response(200, json={
+        "full_name": "owner/repo",
+        "default_branch": "main",
+        "description": "A test repository",
+        "topics": ["python", "cli"],
+    }))
+    respx.get(_GH_BASE + "/languages").mock(return_value=httpx.Response(200, json={
+        "Python": 12000, "Shell": 800,
+    }))
+    respx.get(_GH_BASE + "/readme").mock(return_value=httpx.Response(200, json={
+        "content": _b64("# Owner Repo\n\nA sample project README body."),
+    }))
+    respx.get(_GH_BASE + "/git/trees/main", params={"recursive": "1"}).mock(
+        return_value=httpx.Response(200, json={"tree": [
+            {"path": "app", "type": "tree"},
+            {"path": "app/main.py", "type": "blob"},
+            {"path": "README.md", "type": "blob"},
+            {"path": "tests/test_main.py", "type": "blob"},
+        ]}))
+
+
+@respx.mock
+def test_github_full_path_summarizes(monkeypatch):
+    monkeypatch.setattr(config, "GITHUB_TOKEN", "")
+    _mock_github_full()
+    out = _run(repo._github("owner", "repo"))
+    assert "Repository: owner/repo" in out
+    assert "Description: A test repository" in out
+    # Languages preserved in order, capped at 6.
+    assert "Python" in out and "Shell" in out
+    assert "Topics: python, cli" in out
+    # Top-level entries derived from blob paths' first segment.
+    assert "app" in out and "README.md" in out and "tests" in out
+    # File sample lists blobs (not trees).
+    assert "app/main.py" in out
+    assert "tests/test_main.py" in out
+    # README excerpt is decoded from base64 and included.
+    assert "A sample project README body." in out
+
+
+@respx.mock
+def test_github_sends_bearer_token_when_configured(monkeypatch):
+    monkeypatch.setattr(config, "GITHUB_TOKEN", "ghp_secret")
+    _mock_github_full()
+    _run(repo._github("owner", "repo"))
+    # The meta request must carry the Authorization header derived from the token.
+    meta_call = respx.calls[0]
+    assert meta_call.request.headers["Authorization"] == "Bearer ghp_secret"
+
+
+@respx.mock
+def test_github_handles_missing_languages_readme_tree(monkeypatch):
+    # meta succeeds, but the follow-up calls fail — _summarize degrades cleanly.
+    monkeypatch.setattr(config, "GITHUB_TOKEN", "")
+    respx.get(_GH_BASE).mock(return_value=httpx.Response(200, json={
+        "full_name": "owner/repo", "default_branch": "main",
+    }))
+    respx.get(_GH_BASE + "/languages").mock(return_value=httpx.Response(403))
+    respx.get(_GH_BASE + "/readme").mock(return_value=httpx.Response(404))
+    respx.get(_GH_BASE + "/git/trees/main", params={"recursive": "1"}).mock(
+        return_value=httpx.Response(404))
+    out = _run(repo._github("owner", "repo"))
+    assert "Repository: owner/repo" in out
+    assert "Primary language(s): unknown" in out
+    assert "Top-level entries: (unknown)" in out
+    # No README section appended when the readme call failed.
+    assert "README (excerpt):" not in out
+
+
+@respx.mock
+def test_github_private_falls_back_to_firecrawl(monkeypatch):
+    # Private/not-found repo: meta lacks full_name → scrape the web page.
+    monkeypatch.setattr(config, "GITHUB_TOKEN", "")
+    monkeypatch.setattr(config, "FIRECRAWL_URL", "https://firecrawl.example")
+    respx.get(_GH_BASE).mock(return_value=httpx.Response(404, json={
+        "message": "Not Found",
+    }))
+    scrape = respx.post("https://firecrawl.example/v1/scrape").mock(
+        return_value=httpx.Response(200, json={
+            "data": {"markdown": "# owner/repo\nScraped page content."}}))
+    out = _run(repo._github("owner", "repo"))
+    assert scrape.called
+    # The fallback scrapes the canonical github.com page for the repo.
+    sent = scrape.calls[0].request
+    assert b"https://github.com/owner/repo" in sent.content
+    assert "Repository page: https://github.com/owner/repo" in out
+    assert "Scraped page content." in out
+
+
+@respx.mock
+def test_github_private_without_firecrawl_returns_note(monkeypatch):
+    monkeypatch.setattr(config, "GITHUB_TOKEN", "")
+    monkeypatch.setattr(config, "FIRECRAWL_URL", "")
+    respx.get(_GH_BASE).mock(return_value=httpx.Response(404, json={"message": "Not Found"}))
+    out = _run(repo._github("owner", "repo"))
+    assert "No structured fetch available" in out
+    assert "github.com/owner/repo" in out
+
+
+@respx.mock
+def test_fetch_repo_context_github_url_end_to_end(monkeypatch):
+    # Full public path through the entry point fetch_repo_context (URL → regex
+    # → _github → _summarize), exercising real httpx with no stubs.
+    monkeypatch.setattr(config, "GITHUB_TOKEN", "")
+    _mock_github_full()
+    out = _run(repo.fetch_repo_context("https://github.com/owner/repo"))
+    assert "Repository: owner/repo" in out
+    assert "A sample project README body." in out
+
+
+@respx.mock
+def test_firecrawl_reads_top_level_markdown_key(monkeypatch):
+    # Some Firecrawl responses put markdown at the top level rather than under data.
+    monkeypatch.setattr(config, "FIRECRAWL_URL", "https://firecrawl.example/")
+    respx.post("https://firecrawl.example/v1/scrape").mock(
+        return_value=httpx.Response(200, json={"markdown": "top-level md"}))
+    out = _run(repo._firecrawl("https://gitlab.com/owner/repo"))
+    assert "Repository page: https://gitlab.com/owner/repo" in out
+    assert "top-level md" in out
+
+
+@respx.mock
+def test_firecrawl_raises_on_5xx(monkeypatch):
+    # A 5xx (often an HTML error page) must raise before .json() is attempted.
+    monkeypatch.setattr(config, "FIRECRAWL_URL", "https://firecrawl.example")
+    respx.post("https://firecrawl.example/v1/scrape").mock(
+        return_value=httpx.Response(502, text="<html>bad gateway</html>"))
+    with pytest.raises(httpx.HTTPStatusError):
+        _run(repo._firecrawl("https://gitlab.com/owner/repo"))
+
+
+def test_firecrawl_no_url_returns_note(monkeypatch):
+    monkeypatch.setattr(config, "FIRECRAWL_URL", "")
+    out = _run(repo._firecrawl("https://gitlab.com/owner/repo"))
+    assert "No structured fetch available" in out
