@@ -3,13 +3,22 @@ import html
 import json
 import logging
 from pathlib import Path
+from urllib.parse import urlencode
 
+import httpx
 from fastapi import FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, PlainTextResponse, Response, StreamingResponse
+from fastapi.responses import (
+    HTMLResponse,
+    PlainTextResponse,
+    RedirectResponse,
+    Response,
+    StreamingResponse,
+)
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
-from app import config, settings
+from app import audit, auth, config, settings
 from app.llm.base import GenerationError
 from app.wizard import flow, state
 
@@ -89,6 +98,50 @@ def _html(name: str, **ctx) -> str:
 def _push(s) -> dict:
     """HX-Push-Url header so refresh/back lands on the session resume route."""
     return {"HX-Push-Url": f"/sessions/{s.id}"}
+
+
+# ---- Auth-session cookie (opaque, signed; tokens stay server-side) ----------
+# The cookie carries ONLY a signed session id (itsdangerous). The GitHub /
+# Atlassian access tokens live in app/auth.py and never reach the browser.
+AUTH_COOKIE = "incipit_auth"
+_COOKIE_SALT = "incipit-auth"
+
+
+def _serializer() -> URLSafeTimedSerializer:
+    # Built per call so a rotated SESSION_COOKIE_SECRET (or a test monkeypatch)
+    # takes effect without re-importing the module.
+    return URLSafeTimedSerializer(config.SESSION_COOKIE_SECRET, salt=_COOKIE_SALT)
+
+
+def _read_sid(request: Request) -> str | None:
+    """Return the verified session id from the request cookie, or None if the
+    cookie is missing, tampered with, or older than the session TTL."""
+    raw = request.cookies.get(AUTH_COOKIE)
+    if not raw:
+        return None
+    try:
+        return _serializer().loads(raw, max_age=config.SESSION_TTL)
+    except (BadSignature, SignatureExpired):
+        return None
+
+
+def _set_auth_cookie(response: Response, sid: str) -> None:
+    """Attach the signed session-id cookie with the hardened flags
+    (HttpOnly + SameSite=Strict, Secure unless explicitly disabled for dev)."""
+    response.set_cookie(
+        AUTH_COOKIE, _serializer().dumps(sid),
+        max_age=config.SESSION_TTL, httponly=True,
+        secure=config.COOKIE_SECURE, samesite="strict", path="/",
+    )
+
+
+def _clear_auth_cookie(response: Response) -> None:
+    response.delete_cookie(AUTH_COOKIE, path="/")
+
+
+def current_auth(request: Request) -> auth.AuthRecord | None:
+    """Resolve the request's auth record (verified cookie → server-side store)."""
+    return auth.get_auth(_read_sid(request))
 
 
 # Background wizard jobs are fire-and-forget. Keep a strong reference (a bare
@@ -572,6 +625,105 @@ async def download(sid: str):
         media_type="text/markdown",
         headers={"Content-Disposition": 'attachment; filename="mega-prompt.md"'},
     )
+
+
+# ---- GitHub OAuth login -----------------------------------------------------
+# Flow: /auth/github/login mints a session + CSRF state, sets the signed cookie,
+# and 302s to GitHub. GitHub redirects back to /auth/github/callback?code&state;
+# we exchange the code for a token, fetch the user, store the token server-side
+# (app/auth.py), audit it, and redirect back to where the user started. The
+# browser only ever holds the opaque signed session id.
+
+GITHUB_AUTHORIZE_URL = "https://github.com/login/oauth/authorize"
+GITHUB_TOKEN_URL = "https://github.com/login/oauth/access_token"
+GITHUB_USER_URL = "https://api.github.com/user"
+
+
+def _safe_return_to(value: str | None) -> str:
+    """Only allow same-app relative redirects (no open-redirect via //host)."""
+    if value and value.startswith("/") and not value.startswith("//"):
+        return value
+    return "/"
+
+
+@app.get("/auth/github/login")
+async def github_login(request: Request, return_to: str = "/"):
+    if not config.GITHUB_OAUTH_CLIENT_ID:
+        return PlainTextResponse("GitHub login is not configured.", status_code=503)
+    # Reuse an existing session if the cookie is valid, else start a new one.
+    rec = current_auth(request) or auth.create_auth()
+    state = auth.new_state(rec, "github", _safe_return_to(return_to))
+    params = {
+        "client_id": config.GITHUB_OAUTH_CLIENT_ID,
+        "redirect_uri": config.GITHUB_OAUTH_REDIRECT_URL,
+        "scope": config.GITHUB_OAUTH_SCOPES,
+        "state": state,
+        "allow_signup": "false",
+    }
+    resp = RedirectResponse(f"{GITHUB_AUTHORIZE_URL}?{urlencode(params)}", status_code=302)
+    _set_auth_cookie(resp, rec.id)
+    return resp
+
+
+@app.get("/auth/github/callback")
+async def github_callback(request: Request, code: str = "", state: str = "",
+                          error: str = ""):
+    rec = current_auth(request)
+    if rec is None:
+        return PlainTextResponse("Auth session expired; please log in again.",
+                                 status_code=400)
+    payload = auth.pop_state(rec, state, "github")
+    if payload is None:
+        return PlainTextResponse("Invalid or expired OAuth state.", status_code=400)
+    return_to = _safe_return_to(payload.get("return_to"))
+    if error or not code:
+        # User denied, or GitHub returned an error — back to where they started.
+        return RedirectResponse(return_to, status_code=302)
+
+    async with httpx.AsyncClient(timeout=config.REPO_TIMEOUT) as c:
+        tok = await c.post(GITHUB_TOKEN_URL, headers={"Accept": "application/json"},
+                           data={
+                               "client_id": config.GITHUB_OAUTH_CLIENT_ID,
+                               "client_secret": config.GITHUB_OAUTH_CLIENT_SECRET,
+                               "code": code,
+                               "redirect_uri": config.GITHUB_OAUTH_REDIRECT_URL,
+                           })
+        token_data = tok.json() if tok.status_code == 200 else {}
+        access_token = token_data.get("access_token", "")
+        if not access_token:
+            return PlainTextResponse("GitHub did not return an access token.",
+                                     status_code=400)
+        ur = await c.get(GITHUB_USER_URL, headers={
+            "Accept": "application/vnd.github+json",
+            "Authorization": f"Bearer {access_token}",
+            "User-Agent": "incipit",
+        })
+        user = ur.json() if ur.status_code == 200 else {}
+
+    auth.set_provider(rec, "github", access_token=access_token,
+                      scope=token_data.get("scope", ""),
+                      token_type=token_data.get("token_type", "bearer"),
+                      user_id=str(user.get("id", "")),
+                      user_login=user.get("login", ""))
+    audit.token_issued("github", user_id=str(user.get("id", "")),
+                       user_login=user.get("login", ""), scope=token_data.get("scope", ""))
+    resp = RedirectResponse(return_to, status_code=302)
+    _set_auth_cookie(resp, rec.id)  # refresh the cookie's max-age
+    return resp
+
+
+@app.post("/auth/github/logout")
+async def github_logout(request: Request):
+    rec = current_auth(request)
+    if rec is not None:
+        entry = auth.revoke(rec, "github")
+        if entry is not None:
+            audit.token_revoked("github", user_id=entry.user_id,
+                                 user_login=entry.user_login)
+    # Clear the cookie and tell HTMX to refresh so the UI reflects logged-out.
+    resp = Response(status_code=204, headers={"HX-Refresh": "true"})
+    _clear_auth_cookie(resp)
+    return resp
 
 
 @app.on_event("shutdown")

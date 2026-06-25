@@ -95,10 +95,32 @@ A local `.env` is auto-loaded if present. Anything you save in the **⚙ Model
 settings** panel is written to `.promptgen.json` (gitignored) and takes precedence
 on the next run, so you configure your endpoint once.
 
-There is **no authentication** — run it on localhost or a trusted network only.
+The app has no login of its own — run it on localhost or a trusted network. The
+optional **"Login with GitHub"** flow (see below) is a per-user OAuth grant used
+only to read your private repos for grounding; it does not gate the app.
+
+### Optional: Login with GitHub (private-repo grounding)
+
+For existing-codebase specs you can sign in with GitHub so the wizard can read
+your **private** repos. The user's access token is stored **server-side only**
+(in-memory, `app/auth.py`); the browser cookie carries just a signed, opaque
+session id (`HttpOnly` + `Secure` + `SameSite=Strict`). Configure the OAuth app:
+
+| Env var | What |
+|---|---|
+| `INCIPIT_GITHUB_OAUTH_CLIENT_ID` | OAuth app client id (public; a registered default is built in) |
+| `INCIPIT_GITHUB_OAUTH_CLIENT_SECRET` | OAuth app client secret — **secret**, set via env/Doppler, never commit |
+| `INCIPIT_GITHUB_OAUTH_REDIRECT_URL` | Callback URL registered on the OAuth app (`…/auth/github/callback`) |
+| `INCIPIT_GITHUB_OAUTH_SCOPES` | Requested scopes (default `repo`) |
+| `INCIPIT_SESSION_COOKIE_SECRET` | Secret used to sign the session cookie (set it so cookies survive restarts) |
+| `INCIPIT_COOKIE_SECURE` | Set the cookie `Secure` flag (default `true`; set `false` for local plain HTTP) |
+
+Token issuance/revocation is recorded on the `promptgen.audit` logger (no
+tokens are ever logged). Leave the client id/secret blank to disable the button.
 
 There's no test suite or build step for the app itself. For a fast dev loop,
-point it at any running endpoint and run `uvicorn` as above.
+point it at any running endpoint and run `uvicorn` as above. The repo does ship
+an offline `pytest` suite (`pip install -r requirements-dev.txt && pytest`).
 
 ---
 
