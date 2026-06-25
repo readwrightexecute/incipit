@@ -118,9 +118,95 @@ session id (`HttpOnly` + `Secure` + `SameSite=Strict`). Configure the OAuth app:
 Token issuance/revocation is recorded on the `promptgen.audit` logger (no
 tokens are ever logged). Leave the client id/secret blank to disable the button.
 
-There's no test suite or build step for the app itself. For a fast dev loop,
-point it at any running endpoint and run `uvicorn` as above. The repo does ship
-an offline `pytest` suite (`pip install -r requirements-dev.txt && pytest`).
+### Optional: Sign in with Atlassian (Jira export)
+
+On the final step you can **"Sign in with Atlassian"** (OAuth 2.0 / 3LO) and
+push the assembled mega-prompt straight into a Jira issue: pick a **Project** +
+**Issue type**, hit **Export to Jira**, and you get back the issue key and a
+clickable link. The brief is sent as a pretty **ADF** description and the raw
+`.md` is also attached. Each user authorizes their **own** Jira site — there is
+no shared/admin token. Access **and** refresh tokens plus the resolved
+`cloudId`/site live **server-side only**; the cookie still carries just the
+opaque signed session id, and the token is auto-refreshed before it lapses.
+
+| Env var | What |
+|---|---|
+| `INCIPIT_ATLASSIAN_OAUTH_CLIENT_ID` | Atlassian OAuth app client id (public; a registered default is built in) |
+| `INCIPIT_ATLASSIAN_OAUTH_CLIENT_SECRET` | Atlassian OAuth app client secret — **secret**, set via env/Doppler, never commit |
+| `INCIPIT_ATLASSIAN_OAUTH_REDIRECT_URL` | Callback URL registered on the app (`…/auth/atlassian/callback`) |
+| `INCIPIT_ATLASSIAN_OAUTH_SCOPES` | Console scopes (default `read:jira-work write:jira-work read:jira-user`); `offline_access` is appended at request time so a refresh token is issued |
+| `INCIPIT_JIRA_ISSUE_TYPES` | Comma-separated issue types for the dropdown (default `Task,Story,Bug`) |
+| `INCIPIT_JIRA_DEFAULT_PROJECT_KEY` | Optional project key to pre-select |
+| `INCIPIT_JIRA_EXPORT_TIMEOUT` | End-to-end export budget in ms (default `4000`) |
+
+Export events are recorded on the `promptgen.audit` logger. Leave the Atlassian
+client id/secret blank to hide the button. **`INCIPIT_ATLASSIAN_OAUTH_CLIENT_SECRET`
+must be supplied via env/Doppler** for the export flow to work.
+
+### All environment variables
+
+One table so a Doppler (or `.env`) config can be populated end-to-end. Secrets
+are flagged — never commit them.
+
+| Env var | Purpose | Default |
+|---|---|---|
+| `INCIPIT_BACKEND` | LLM backend: `openai` \| `diffusion-cnv` \| `diffusion-oneshot` | `openai` |
+| `INCIPIT_OPENAI_BASE_URL` | OpenAI-compatible endpoint base URL | `http://localhost:11434/v1` |
+| `INCIPIT_OPENAI_MODEL` | Default model id (overridable in the UI) | _(empty)_ |
+| `INCIPIT_OPENAI_API_KEY` | API key for the endpoint (**secret**) | _(empty)_ |
+| `INCIPIT_REASONING_EFFORT` | `default` \| `none` \| `low` \| `medium` \| `high` | `default` |
+| `INCIPIT_DISABLE_THINKING` | Back-compat: truthy → `reasoning_effort=none` | _(unset)_ |
+| `INCIPIT_ALLOWED_BASE_URL_HOSTS` | Extra hosts allowed for the model endpoint (SSRF allow-list) | _(empty)_ |
+| `INCIPIT_SETTINGS_FILE` | Path for persisted UI settings | `.promptgen.json` |
+| `INCIPIT_MAX_TOKENS` | Max generated tokens | `2048` |
+| `INCIPIT_GEN_TIMEOUT` | Generation timeout (s) | `300` |
+| `INCIPIT_LOAD_TIMEOUT` | Model load timeout (s) | `600` |
+| `INCIPIT_IDLE_TIMEOUT` | Idle-kill timeout for the diffusion subprocess (s) | `600` |
+| `INCIPIT_CLI_BIN` | Path to `llama-diffusion-cli` (diffusion backends) | `/usr/local/bin/llama-diffusion-cli` |
+| `INCIPIT_MODEL` | GGUF model path (diffusion backends) | _(see config)_ |
+| `INCIPIT_NGL` / `INCIPIT_N_CPU_MOE` / `INCIPIT_THREADS` | Diffusion CLI GPU/CPU/thread knobs | `99` / `18` / `8` |
+| `INCIPIT_PROMPT_MARKER` | Diffusion `-cnv` turn marker | `"\n> "` |
+| `INCIPIT_DIFFUSION_ARGS` | Extra diffusion CLI args | _(see config)_ |
+| `INCIPIT_SESSION_TTL` | Session + auth-record TTL (s) | `86400` |
+| `INCIPIT_GITHUB_TOKEN` | Anonymous-rate-limit token for public repo grounding | _(empty)_ |
+| `INCIPIT_FIRECRAWL_URL` | Firecrawl base URL for non-GitHub repo scraping | _(empty)_ |
+| `INCIPIT_REPO_TIMEOUT` | Repo-fetch HTTP timeout (s) | `25` |
+| `INCIPIT_REPO_CONTEXT_MAX` | Max chars of repo context injected into prompts | `6000` |
+| `INCIPIT_GITHUB_OAUTH_CLIENT_ID` | GitHub OAuth app client id (public) | _(built-in default)_ |
+| `INCIPIT_GITHUB_OAUTH_CLIENT_SECRET` | GitHub OAuth app client secret (**secret**) | _(empty)_ |
+| `INCIPIT_GITHUB_OAUTH_REDIRECT_URL` | GitHub OAuth callback URL | `https://incipit.nexus.inmotionhosting.com/auth/github/callback` |
+| `INCIPIT_GITHUB_OAUTH_SCOPES` | GitHub OAuth scopes | `repo` |
+| `INCIPIT_ATLASSIAN_OAUTH_CLIENT_ID` | Atlassian OAuth app client id (public) | _(built-in default)_ |
+| `INCIPIT_ATLASSIAN_OAUTH_CLIENT_SECRET` | Atlassian OAuth app client secret (**secret**) | _(empty)_ |
+| `INCIPIT_ATLASSIAN_OAUTH_REDIRECT_URL` | Atlassian OAuth callback URL | `https://incipit.nexus.inmotionhosting.com/auth/atlassian/callback` |
+| `INCIPIT_ATLASSIAN_OAUTH_SCOPES` | Atlassian console scopes (`offline_access` appended at request time) | `read:jira-work write:jira-work read:jira-user` |
+| `INCIPIT_JIRA_ISSUE_TYPES` | Issue-type dropdown options | `Task,Story,Bug` |
+| `INCIPIT_JIRA_DEFAULT_PROJECT_KEY` | Pre-selected project key | _(empty)_ |
+| `INCIPIT_JIRA_EXPORT_TIMEOUT` | Export time budget (ms) | `4000` |
+| `INCIPIT_SESSION_COOKIE_SECRET` | Secret for signing the session cookie (**secret**; set so cookies survive restarts) | _(ephemeral per-process)_ |
+| `INCIPIT_COOKIE_SECURE` | Set the cookie `Secure` flag | `true` |
+
+## Testing & coverage
+
+The repo ships an offline `pytest` suite (no network, no model/subprocess) —
+OAuth flows and the Jira REST client are exercised against a mocked httpx
+transport (`respx`):
+
+```bash
+pip install -r requirements-dev.txt
+pytest          # runs with coverage (see pytest.ini)
+```
+
+CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs the same suite
+on Python 3.11. Coverage is gated at **90%** but **scoped** (in `pytest.ini`) to
+the security-critical, fully-offline-testable modules — `app/auth.py`,
+`app/audit.py`, `app/jira.py`, `app/markdown_adf.py` — rather than the whole
+`app` package: the LLM/diffusion backends and the wizard orchestration call out
+to a model/subprocess and aren't covered by the offline suite, so a 90% gate
+over all of `app` is impractical. The auth + export **routes** live in
+`app/main.py` alongside every wizard route (so they can't be isolated per-file
+by coverage), but they are covered by `tests/test_auth.py`,
+`tests/test_jira_auth.py`, and `tests/test_jira_export.py`.
 
 ---
 

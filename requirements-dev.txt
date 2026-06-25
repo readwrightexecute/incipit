@@ -4,3 +4,5 @@
 pytest==9.1.1
 # Mocked HTTP transport for httpx (OAuth login/callback + Jira REST tests).
 respx==0.22.0
+# Coverage gate (see pytest.ini addopts / .github/workflows/ci.yml).
+pytest-cov==7.1.0
