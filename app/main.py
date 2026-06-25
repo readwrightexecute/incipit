@@ -2,6 +2,7 @@ import asyncio
 import html
 import json
 import logging
+import time
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -144,6 +145,18 @@ def current_auth(request: Request) -> auth.AuthRecord | None:
     return auth.get_auth(_read_sid(request))
 
 
+def _atlassian_ctx(request: Request) -> dict:
+    """Atlassian-login state for the final/export step controls."""
+    rec = current_auth(request)
+    entry = rec.provider("atlassian") if rec else None
+    meta = entry.meta if entry else {}
+    return {
+        "atlassian_configured": bool(config.ATLASSIAN_OAUTH_CLIENT_ID),
+        "atlassian_connected": entry is not None,
+        "atlassian_site": meta.get("site_name") or meta.get("site_url", ""),
+    }
+
+
 # Background wizard jobs are fire-and-forget. Keep a strong reference (a bare
 # create_task() may be garbage-collected before it finishes) and log any
 # unhandled exception (otherwise it's swallowed and the session is left stuck
@@ -226,7 +239,7 @@ async def resume(request: Request, sid: str):
         return _render("resume.html", request, body="step_moonshot.html", s=s)
     if s.phase == "final":
         return _render("step6_final.html", request, s=s,
-                       mega_prompt=flow.assemble_final(s))
+                       mega_prompt=flow.assemble_final(s), **_atlassian_ctx(request))
     return _render("step1_idea.html", request, **_calibration_ctx())
 
 
@@ -612,7 +625,7 @@ async def final(request: Request, sid: str):
         return _render("expired.html", request)
     s.phase = "final"
     return _render("step6_final.html", request, s=s,
-                   mega_prompt=flow.assemble_final(s))
+                   mega_prompt=flow.assemble_final(s), **_atlassian_ctx(request))
 
 
 @app.get("/sessions/{sid}/download.md")
@@ -724,6 +737,181 @@ async def github_logout(request: Request):
     resp = Response(status_code=204, headers={"HX-Refresh": "true"})
     _clear_auth_cookie(resp)
     return resp
+
+
+# ---- Atlassian (Jira) OAuth 2.0 / 3LO login ---------------------------------
+# Mirrors the GitHub flow: /auth/atlassian/login mints a CSRF state, sets the
+# signed cookie, and 302s to Atlassian with `offline_access` appended so we get
+# a refresh token. The callback exchanges the code, caches the user's cloudId +
+# site via accessible-resources, and stores access+refresh+expiry server-side
+# (app/auth.py). The browser only ever holds the opaque signed session id.
+
+ATLASSIAN_AUTHORIZE_URL = "https://auth.atlassian.com/authorize"
+ATLASSIAN_TOKEN_URL = "https://auth.atlassian.com/oauth/token"
+ATLASSIAN_RESOURCES_URL = "https://api.atlassian.com/oauth/token/accessible-resources"
+
+# Refresh the access token when it's within this many seconds of expiry (or
+# already expired), so an export never starts with a token about to lapse.
+ATLASSIAN_REFRESH_SKEW = 60
+
+
+class AtlassianAuthError(Exception):
+    """Raised when the current session has no usable Atlassian token (not
+    signed in, or a refresh failed) so callers can surface the re-authorize
+    modal instead of a generic 500 — mirrors repo.GitHubAuthError."""
+
+
+def _atlassian_scope() -> str:
+    """Configured scopes plus `offline_access` (appended at request time, not a
+    console scope) so Atlassian returns a refresh token."""
+    scopes = config.ATLASSIAN_OAUTH_SCOPES.split()
+    if "offline_access" not in scopes:
+        scopes.append("offline_access")
+    return " ".join(scopes)
+
+
+@app.get("/auth/atlassian/login")
+async def atlassian_login(request: Request, return_to: str = "/"):
+    if not config.ATLASSIAN_OAUTH_CLIENT_ID:
+        return PlainTextResponse("Atlassian login is not configured.", status_code=503)
+    rec = current_auth(request) or auth.create_auth()
+    state = auth.new_state(rec, "atlassian", _safe_return_to(return_to))
+    params = {
+        "audience": "api.atlassian.com",
+        "client_id": config.ATLASSIAN_OAUTH_CLIENT_ID,
+        "scope": _atlassian_scope(),
+        "redirect_uri": config.ATLASSIAN_OAUTH_REDIRECT_URL,
+        "state": state,
+        "response_type": "code",
+        "prompt": "consent",
+    }
+    resp = RedirectResponse(f"{ATLASSIAN_AUTHORIZE_URL}?{urlencode(params)}", status_code=302)
+    _set_auth_cookie(resp, rec.id)
+    return resp
+
+
+@app.get("/auth/atlassian/callback")
+async def atlassian_callback(request: Request, code: str = "", state: str = "",
+                             error: str = ""):
+    rec = current_auth(request)
+    if rec is None:
+        return PlainTextResponse("Auth session expired; please log in again.",
+                                 status_code=400)
+    payload = auth.pop_state(rec, state, "atlassian")
+    if payload is None:
+        return PlainTextResponse("Invalid or expired OAuth state.", status_code=400)
+    return_to = _safe_return_to(payload.get("return_to"))
+    if error or not code:
+        # User denied, or Atlassian returned an error — back to where they were.
+        return RedirectResponse(return_to, status_code=302)
+
+    async with httpx.AsyncClient(timeout=config.REPO_TIMEOUT) as c:
+        tok = await c.post(ATLASSIAN_TOKEN_URL, json={
+            "grant_type": "authorization_code",
+            "client_id": config.ATLASSIAN_OAUTH_CLIENT_ID,
+            "client_secret": config.ATLASSIAN_OAUTH_CLIENT_SECRET,
+            "code": code,
+            "redirect_uri": config.ATLASSIAN_OAUTH_REDIRECT_URL,
+        })
+        token_data = tok.json() if tok.status_code == 200 else {}
+        access_token = token_data.get("access_token", "")
+        if not access_token:
+            return PlainTextResponse("Atlassian did not return an access token.",
+                                     status_code=400)
+        # Resolve the user's accessible Jira site(s) → cloudId + site URL.
+        rr = await c.get(ATLASSIAN_RESOURCES_URL, headers={
+            "Accept": "application/json",
+            "Authorization": f"Bearer {access_token}",
+        })
+        resources = rr.json() if rr.status_code == 200 else []
+
+    first = resources[0] if isinstance(resources, list) and resources else {}
+    meta = {
+        "cloud_id": first.get("id", ""),
+        "site_url": first.get("url", ""),
+        "site_name": first.get("name", "") or first.get("url", ""),
+    }
+    auth.set_provider(rec, "atlassian", access_token=access_token,
+                      refresh_token=token_data.get("refresh_token", ""),
+                      scope=token_data.get("scope", ""),
+                      token_type=token_data.get("token_type", "bearer"),
+                      expires_at=_expires_at(token_data.get("expires_in")),
+                      user_id=meta["cloud_id"], user_login=meta["site_name"],
+                      meta=meta)
+    audit.token_issued("atlassian", user_id=meta["cloud_id"],
+                       user_login=meta["site_name"], scope=token_data.get("scope", ""))
+    resp = RedirectResponse(return_to, status_code=302)
+    _set_auth_cookie(resp, rec.id)  # refresh the cookie's max-age
+    return resp
+
+
+@app.post("/auth/atlassian/logout")
+async def atlassian_logout(request: Request):
+    rec = current_auth(request)
+    if rec is not None:
+        entry = auth.revoke(rec, "atlassian")
+        if entry is not None:
+            audit.token_revoked("atlassian", user_id=entry.user_id,
+                                 user_login=entry.user_login)
+    # HX-Refresh re-renders the final page so the connected chip disappears.
+    return Response(status_code=204, headers={"HX-Refresh": "true"})
+
+
+def _expires_at(expires_in) -> float:
+    """Convert Atlassian's `expires_in` (seconds) into an absolute epoch; 0 when
+    absent so we treat the token as already due for refresh."""
+    try:
+        return time.time() + int(expires_in)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _atlassian_token_expiring(entry: auth.ProviderEntry) -> bool:
+    """True when the access token is unset, untracked, or within the refresh
+    skew of expiry."""
+    if not entry.expires_at:
+        return True
+    return entry.expires_at - time.time() <= ATLASSIAN_REFRESH_SKEW
+
+
+async def refresh_atlassian_token(rec: auth.AuthRecord | None) -> auth.ProviderEntry:
+    """Return a usable Atlassian provider entry, refreshing the access token via
+    the stored refresh_token when it's near/after expiry. Raises
+    AtlassianAuthError when there's no entry or the refresh fails, so the caller
+    can surface the re-authorize modal (same pattern as the GitHub 401 path)."""
+    entry = rec.provider("atlassian") if rec else None
+    if entry is None:
+        raise AtlassianAuthError("not signed in to Atlassian")
+    if not _atlassian_token_expiring(entry):
+        return entry
+    if not entry.refresh_token:
+        raise AtlassianAuthError("Atlassian access token expired and no refresh token")
+    try:
+        async with httpx.AsyncClient(timeout=config.REPO_TIMEOUT) as c:
+            tok = await c.post(ATLASSIAN_TOKEN_URL, json={
+                "grant_type": "refresh_token",
+                "client_id": config.ATLASSIAN_OAUTH_CLIENT_ID,
+                "client_secret": config.ATLASSIAN_OAUTH_CLIENT_SECRET,
+                "refresh_token": entry.refresh_token,
+            })
+    except httpx.HTTPError as e:
+        raise AtlassianAuthError(f"Atlassian token refresh failed: {e}") from e
+    if tok.status_code != 200:
+        raise AtlassianAuthError("Atlassian rejected the refresh token")
+    data = tok.json()
+    new_token = data.get("access_token", "")
+    if not new_token:
+        raise AtlassianAuthError("Atlassian refresh returned no access token")
+    entry.access_token = new_token
+    entry.expires_at = _expires_at(data.get("expires_in"))
+    # Atlassian rotates refresh tokens; keep the new one when provided.
+    if data.get("refresh_token"):
+        entry.refresh_token = data["refresh_token"]
+    if data.get("scope"):
+        entry.scope = data["scope"]
+    audit.token_refreshed("atlassian", user_id=entry.user_id,
+                          user_login=entry.user_login, scope=entry.scope)
+    return entry
 
 
 @app.on_event("shutdown")
