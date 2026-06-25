@@ -6,6 +6,7 @@ talks to the app over its own ASGI transport (not intercepted). No network.
 """
 
 import logging
+import time
 from urllib.parse import parse_qs, urlparse
 
 import httpx
@@ -188,3 +189,43 @@ def test_auth_store_state_rejects_wrong_provider():
     rec = auth.create_auth()
     state = auth.new_state(rec, "github", "/")
     assert auth.pop_state(rec, state, "atlassian") is None
+
+
+def test_auth_store_pop_state_empty_is_none():
+    rec = auth.create_auth()
+    assert auth.pop_state(rec, "", "github") is None
+
+
+def test_get_auth_none_and_unknown_returns_none():
+    assert auth.get_auth(None) is None
+    assert auth.get_auth("does-not-exist") is None
+
+
+def test_get_auth_expired_is_evicted(monkeypatch):
+    rec = auth.create_auth()
+    # Backdate the record beyond the TTL: get_auth should evict and return None.
+    rec.created = time.time() - config.SESSION_TTL - 1
+    assert auth.get_auth(rec.id) is None
+    assert auth.get_auth(rec.id) is None  # already removed
+
+
+def test_sweep_drops_expired_records():
+    rec = auth.create_auth()
+    rec.created = time.time() - config.SESSION_TTL - 1
+    auth.create_auth()  # triggers a sweep on insert
+    assert auth.get_auth(rec.id) is None
+
+
+def test_get_provider_resolves_via_session_id():
+    rec = auth.create_auth()
+    auth.set_provider(rec, "github", access_token="t", user_login="octocat")
+    assert auth.get_provider(rec.id, "github").user_login == "octocat"
+    assert auth.get_provider(rec.id, "atlassian") is None
+    assert auth.get_provider(None, "github") is None
+
+
+def test_revoke_whole_record_drops_session():
+    rec = auth.create_auth()
+    auth.set_provider(rec, "github", access_token="t")
+    assert auth.revoke(rec, None) is None
+    assert auth.get_auth(rec.id) is None
