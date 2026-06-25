@@ -27,6 +27,14 @@ def _int(name: str, default: int) -> int:
         return default
 
 
+def _bool(name: str, default: bool) -> bool:
+    """Parse a boolean env override. Truthy: 1/true/yes/on (case-insensitive)."""
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in ("1", "true", "yes", "on")
+
+
 # Backend selection: openai | diffusion-cnv | diffusion-oneshot
 # Default is `openai` so a fresh clone runs against any OpenAI-compatible
 # endpoint (Ollama by default) with no GPU / llama.cpp build. The diffusion
@@ -103,3 +111,34 @@ GITHUB_TOKEN = os.environ.get("INCIPIT_GITHUB_TOKEN", "")
 FIRECRAWL_URL = os.environ.get("INCIPIT_FIRECRAWL_URL", "")
 REPO_TIMEOUT = _int("INCIPIT_REPO_TIMEOUT", 25)
 REPO_CONTEXT_MAX_CHARS = _int("INCIPIT_REPO_CONTEXT_MAX", 6000)
+
+# --- GitHub OAuth login (per-user "Login with GitHub") ---------------------
+# Lets a signed-in user ground the spec in their own private repos. The user's
+# access token is stored server-side only (app/auth.py); the browser cookie
+# carries just a signed, opaque session id. The CLIENT_ID below is the public,
+# registered OAuth-app id (not a secret); the CLIENT_SECRET must come from the
+# environment (Doppler/Vault) and must never be committed. Blank client
+# id/secret simply disables the login button.
+GITHUB_OAUTH_CLIENT_ID = os.environ.get(
+    "INCIPIT_GITHUB_OAUTH_CLIENT_ID", "Ov23liQTAZncU8NnfMS4")
+GITHUB_OAUTH_CLIENT_SECRET = os.environ.get("INCIPIT_GITHUB_OAUTH_CLIENT_SECRET", "")
+GITHUB_OAUTH_REDIRECT_URL = os.environ.get(
+    "INCIPIT_GITHUB_OAUTH_REDIRECT_URL",
+    "https://incipit.nexus.inmotionhosting.com/auth/github/callback")
+GITHUB_OAUTH_SCOPES = os.environ.get("INCIPIT_GITHUB_OAUTH_SCOPES", "repo")
+
+# Secret used to sign the opaque session-id cookie (itsdangerous). If unset we
+# generate an ephemeral per-process secret: cookies then work within a single
+# run but don't survive a restart — acceptable for the single-replica design,
+# but set this in any real deploy so sessions persist across restarts.
+SESSION_COOKIE_SECRET = os.environ.get("INCIPIT_SESSION_COOKIE_SECRET", "")
+if not SESSION_COOKIE_SECRET:
+    import secrets as _secrets
+
+    SESSION_COOKIE_SECRET = _secrets.token_urlsafe(32)
+    log.warning("INCIPIT_SESSION_COOKIE_SECRET not set; using an ephemeral "
+                "per-process secret (auth cookies won't survive a restart)")
+
+# Set the Secure flag on auth cookies (HTTPS only). Default true; set false for
+# local plain-HTTP development.
+COOKIE_SECURE = _bool("INCIPIT_COOKIE_SECURE", True)
