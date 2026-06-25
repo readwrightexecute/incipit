@@ -19,7 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
-from app import audit, auth, config, settings
+from app import audit, auth, config, jira, markdown_adf, settings
 from app.llm.base import GenerationError
 from app.wizard import flow, state
 
@@ -855,6 +855,110 @@ async def atlassian_logout(request: Request):
                                  user_login=entry.user_login)
     # HX-Refresh re-renders the final page so the connected chip disappears.
     return Response(status_code=204, headers={"HX-Refresh": "true"})
+
+
+# ---- Jira export (issue creation over REST) ---------------------------------
+# /api/jira/projects loads the user's projects into the picker (refreshing the
+# token first); /api/jira/export builds the mega-prompt, converts it to ADF,
+# creates the issue, attaches the raw .md, and audits the export — all inside a
+# time budget. A lapsed Atlassian session answers 401 with the re-authorize
+# modal (same beforeSwap handler as the GitHub path).
+
+def _jira_unauthorized() -> HTMLResponse:
+    return HTMLResponse(
+        _html("partials/jira_error.html",
+              reason="Your Atlassian session has expired. Re-authorize to export to Jira."),
+        status_code=401)
+
+
+def _jira_summary(s) -> str:
+    """A concise issue summary derived from the idea."""
+    idea = " ".join((s.idea or "").split())
+    if not idea:
+        return "Incipit mega-prompt"
+    return f"Incipit brief: {idea[:120]}"
+
+
+@app.get("/api/jira/projects", response_class=HTMLResponse)
+async def jira_projects(request: Request, sid: str = ""):
+    """The connected user's projects + issue-type options as the export form.
+    401 (not signed in / refresh failed) renders the re-authorize modal."""
+    rec = current_auth(request)
+    try:
+        entry = await refresh_atlassian_token(rec)
+    except AtlassianAuthError:
+        return _jira_unauthorized()
+    cloud_id = entry.meta.get("cloud_id", "")
+    try:
+        projects = await jira.list_projects(cloud_id, entry.access_token)
+    except jira.JiraError as e:
+        log.warning("jira project/search failed: %s", e)
+        return HTMLResponse(
+            _html("partials/jira_error.html",
+                  reason="Couldn't load your Jira projects. Re-authorize and try again."),
+            status_code=401)
+    return _render("partials/jira_projects.html", request, sid=sid, projects=projects,
+                   issue_types=config.JIRA_ISSUE_TYPES,
+                   default_project=config.JIRA_DEFAULT_PROJECT_KEY)
+
+
+@app.post("/api/jira/export", response_class=HTMLResponse)
+async def jira_export(request: Request, sid: str = Form(...),
+                      project_key: str = Form(...), issue_type: str = Form("Task")):
+    s = state.get(sid)
+    if s is None:
+        return _render("partials/jira_result.html", request, ok=False,
+                       message="That session has expired; start a new one.")
+    rec = current_auth(request)
+    try:
+        entry = await refresh_atlassian_token(rec)
+    except AtlassianAuthError:
+        return _jira_unauthorized()
+    if not project_key:
+        return _render("partials/jira_result.html", request, ok=False,
+                       message="Pick a project before exporting.")
+
+    cloud_id = entry.meta.get("cloud_id", "")
+    site_url = entry.meta.get("site_url", "")
+    md = flow.assemble_final(s)
+    adf = markdown_adf.to_adf(md)
+    summary = _jira_summary(s)
+    budget = config.JIRA_EXPORT_TIMEOUT_MS / 1000
+
+    try:
+        result = await asyncio.wait_for(
+            _export_to_jira(cloud_id, entry.access_token, site_url,
+                            project_key, summary, issue_type, adf, md),
+            timeout=budget)
+    except asyncio.TimeoutError:
+        return _render("partials/jira_result.html", request, ok=False,
+                       message=(f"Export exceeded the {config.JIRA_EXPORT_TIMEOUT_MS}ms "
+                                "budget. Nothing partial was reported — please retry."))
+    except jira.JiraError as e:
+        return _render("partials/jira_result.html", request, ok=False,
+                       message=f"Jira rejected the export: {e}")
+
+    audit.jira_export(project_key, result["key"], user_id=entry.user_id,
+                      user_login=entry.user_login, attached=result["attached"])
+    return _render("partials/jira_result.html", request, ok=True, key=result["key"],
+                   url=result["url"], attached=result["attached"])
+
+
+async def _export_to_jira(cloud_id, token, site_url, project_key, summary,
+                          issue_type, adf, md) -> dict:
+    """Create the issue, then best-effort attach the raw .md. Attachment failure
+    doesn't fail the export — the issue exists either way; we just flag it."""
+    issue = await jira.create_issue(
+        cloud_id, token, project_key=project_key, summary=summary,
+        issue_type=issue_type, description_adf=adf)
+    key = issue["key"]
+    attached = True
+    try:
+        await jira.upload_attachment(cloud_id, token, key, "mega-prompt.md", md)
+    except jira.JiraError as e:
+        log.warning("jira attachment failed for %s: %s", key, e)
+        attached = False
+    return {"key": key, "url": jira.browse_url(site_url, key), "attached": attached}
 
 
 def _expires_at(expires_in) -> float:

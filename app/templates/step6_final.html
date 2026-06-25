@@ -20,7 +20,11 @@
         <button type="button" class="secondary outline jira-disconnect"
                 hx-post="/auth/atlassian/logout" hx-swap="none">Disconnect</button>
       </p>
-      {% block jira_export_controls %}{% endblock %}
+      <div id="jira-controls-region" hx-get="/api/jira/projects?sid={{ s.id }}"
+           hx-trigger="load" hx-swap="innerHTML">
+        <p class="jira-hint">Loading your Jira projects
+          <span class="spinner" data-anim="pulse" aria-hidden="true"></span></p>
+      </div>
     {% else %}
       <p class="jira-hint">Sign in with your own Atlassian account to push this brief into a Jira issue.</p>
       <a role="button" class="secondary"

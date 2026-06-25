@@ -1,0 +1,28 @@
+<div id="jira-controls">
+  {% if projects %}
+  <form class="jira-controls" hx-post="/api/jira/export" hx-target="#jira-result"
+        hx-swap="innerHTML" hx-indicator="#jira-spin">
+    <input type="hidden" name="sid" value="{{ sid }}">
+    <label>Project
+      <select name="project_key" required>
+        {% for p in projects %}
+        <option value="{{ p.key }}" {% if p.key == default_project %}selected{% endif %}>{{ p.name }} ({{ p.key }})</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Issue type
+      <select name="issue_type">
+        {% for t in issue_types %}
+        <option value="{{ t }}">{{ t }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <button type="submit" class="jira-go">Export to Jira
+      <span id="jira-spin" class="spinner htmx-indicator" data-anim="sweep" aria-hidden="true"></span>
+    </button>
+  </form>
+  {% else %}
+  <p class="jira-hint">No Jira projects are visible to your Atlassian account.</p>
+  {% endif %}
+  <div id="jira-result" class="jira-result" aria-live="polite"></div>
+</div>
