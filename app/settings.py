@@ -1,7 +1,7 @@
 """Runtime-mutable settings for the OpenAI-compatible backend.
 
 Single-user, single-replica app (see app/wizard/state.py), so settings are a
-process-global object rather than per-session. Seeded from PROMPTGEN_* env
+process-global object rather than per-session. Seeded from INCIPIT_* env
 (app/config.py), overridable live from the UI, and persisted to a gitignored
 JSON file so a work-PC user only configures their endpoint once.
 """
@@ -17,7 +17,7 @@ from app import config
 log = logging.getLogger("promptgen.settings")
 
 # CWD-relative so it lives next to the repo checkout; override for containers.
-STORE_PATH = os.environ.get("PROMPTGEN_SETTINGS_FILE", ".promptgen.json")
+STORE_PATH = os.environ.get("INCIPIT_SETTINGS_FILE", ".promptgen.json")
 
 _FIELDS = ("base_url", "model", "api_key", "reasoning_effort")
 _DEFAULT_ALLOWED_BASE_URL_HOSTS = {"localhost", "127.0.0.1", "::1", "api.openai.com"}
@@ -53,7 +53,7 @@ def allowed_base_url_hosts() -> set[str]:
     seeded_host = _hostname(config.OPENAI_BASE_URL)
     if seeded_host:
         hosts.add(seeded_host)
-    extra = os.environ.get("PROMPTGEN_ALLOWED_BASE_URL_HOSTS", "")
+    extra = os.environ.get("INCIPIT_ALLOWED_BASE_URL_HOSTS", "")
     hosts.update(
         host for host in (_hostname(part.strip()) for part in extra.split(",")) if host
     )
@@ -75,7 +75,7 @@ def normalize_base_url(base_url: str) -> str:
     if host not in allowed_hosts:
         raise SettingsError(
             f"Endpoint host '{host}' is not allowed. "
-            "Set PROMPTGEN_ALLOWED_BASE_URL_HOSTS to allow it."
+            "Set INCIPIT_ALLOWED_BASE_URL_HOSTS to allow it."
         )
     return normalized
 
@@ -143,7 +143,7 @@ def update(*, base_url: str, model: str, api_key: str, reasoning_effort: str) ->
     # A blank api_key field means "keep the existing stored key" (the UI never
     # echoes the secret back, so the field is empty on every load). Submit a
     # non-blank value to replace it. This means an empty key can't be set via
-    # the form once one exists; clear PROMPTGEN_SETTINGS_FILE / env to reset.
+    # the form once one exists; clear INCIPIT_SETTINGS_FILE / env to reset.
     new_api_key = api_key.strip()
     if new_api_key:
         current.api_key = new_api_key

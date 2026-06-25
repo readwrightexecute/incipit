@@ -7,7 +7,7 @@
   </header>
   {% if not openai %}
     <p class="assumption">A diffusion backend is active; these settings apply only to the
-      OpenAI-compatible backend (set <code>PROMPTGEN_BACKEND=openai</code>).</p>
+      OpenAI-compatible backend (set <code>INCIPIT_BACKEND=openai</code>).</p>
   {% endif %}
   {% if error %}<p class="error">{{ error }}</p>{% endif %}
   <form hx-post="/settings" hx-target="#settings-panel" hx-swap="outerHTML">

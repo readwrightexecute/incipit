@@ -2,8 +2,8 @@
 spec drafting can be grounded in the real codebase.
 
 Strategy: GitHub REST first (public repos, no auth needed; optional
-`PROMPTGEN_GITHUB_TOKEN` lifts the anonymous rate limit). For non-GitHub hosts
-or API failures, fall back to homelab Firecrawl (`PROMPTGEN_FIRECRAWL_URL`) to
+`INCIPIT_GITHUB_TOKEN` lifts the anonymous rate limit). For non-GitHub hosts
+or API failures, fall back to homelab Firecrawl (`INCIPIT_FIRECRAWL_URL`) to
 scrape the repo page. Best-effort throughout — a fetch failure never blocks
 drafting; it returns a short note instead.
 """

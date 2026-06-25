@@ -37,8 +37,8 @@ Example endpoints (set the base URL in the settings panel):
 | OpenAI | `https://api.openai.com/v1` | required |
 
 Runtime endpoint changes are restricted to localhost, `api.openai.com`, and the
-host from `PROMPTGEN_OPENAI_BASE_URL` by default. For another trusted host, set
-`PROMPTGEN_ALLOWED_BASE_URL_HOSTS=host.example.com` before starting the app.
+host from `INCIPIT_OPENAI_BASE_URL` by default. For another trusted host, set
+`INCIPIT_ALLOWED_BASE_URL_HOSTS=host.example.com` before starting the app.
 
 > **"Disable thinking" toggle:** local reasoning models (Qwen, etc.) can burn the
 > whole token budget on a hidden think channel and return empty content. Turning
@@ -90,7 +90,7 @@ wording lives in `app/wizard/prompts/*.md.j2`.
 
 ## Configuration
 
-All config is environment variables (`PROMPTGEN_*`) — see [`.env.example`](.env.example).
+All config is environment variables (`INCIPIT_*`) — see [`.env.example`](.env.example).
 A local `.env` is auto-loaded if present. Anything you save in the **⚙ Model
 settings** panel is written to `.promptgen.json` (gitignored) and takes precedence
 on the next run, so you configure your endpoint once.
@@ -108,7 +108,7 @@ Incipit was originally built around **DiffusionGemma 26B-A4B-it** run through
 `llama-diffusion-cli` (llama.cpp PR #24423, which has no HTTP server yet — the
 app drives a persistent `-cnv` subprocess over stdin/stdout). This path requires
 building llama.cpp from a pinned PR and a GPU, and is selected with
-`PROMPTGEN_BACKEND=diffusion-cnv` (or `diffusion-oneshot`). It is **not** needed
+`INCIPIT_BACKEND=diffusion-cnv` (or `diffusion-oneshot`). It is **not** needed
 for the OpenAI-compatible path above.
 
 ```bash
@@ -120,7 +120,7 @@ hf download unsloth/diffusiongemma-26B-A4B-it-GGUF diffusiongemma-26B-A4B-it-Q4_
 podman build -t localhost/promptgen:v3 .
 ```
 
-Backends (`PROMPTGEN_BACKEND`):
+Backends (`INCIPIT_BACKEND`):
 
 | Value | What |
 |---|---|
