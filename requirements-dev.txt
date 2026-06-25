@@ -2,3 +2,5 @@
 
 # Test harness. Tests run fully offline (no network, no real LLM/subprocess).
 pytest==9.1.1
+# Mocked HTTP transport for httpx (repo-fetch / OAuth end-to-end tests).
+respx==0.22.0
