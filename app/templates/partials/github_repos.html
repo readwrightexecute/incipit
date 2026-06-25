@@ -1,0 +1,18 @@
+<div class="gh-repos">
+  {% if repos %}
+  <input type="search" class="gh-repo-filter" placeholder="Filter your repos…"
+         oninput="filterGhRepos(this)" aria-label="Filter your repositories">
+  <div class="gh-repo-list" role="group" aria-label="Your private repositories">
+    {% for r in repos %}
+    <label class="gh-repo" data-name="{{ (r.full_name ~ ' ' ~ r.description)|lower }}">
+      <input type="checkbox" name="selected_repos" value="{{ r.full_name }}">
+      <span class="gh-repo-name">{{ r.full_name }}</span>
+      {% if r.description %}<small class="gh-repo-desc">— {{ r.description }}</small>{% endif %}
+    </label>
+    {% endfor %}
+  </div>
+  <small class="assumption">Tick the private repos to ground the spec in. The repo link above still works without selecting any.</small>
+  {% else %}
+  <small class="assumption">No private repositories found on your GitHub account.</small>
+  {% endif %}
+</div>

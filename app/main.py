@@ -18,7 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
-from app import audit, auth, config, settings
+from app import audit, auth, config, repo, settings
 from app.llm.base import GenerationError
 from app.wizard import flow, state
 
@@ -144,6 +144,31 @@ def current_auth(request: Request) -> auth.AuthRecord | None:
     return auth.get_auth(_read_sid(request))
 
 
+def _github_ctx(request: Request) -> dict:
+    """GitHub-login state for the step-1 existing-codebase controls."""
+    rec = current_auth(request)
+    entry = rec.provider("github") if rec else None
+    return {
+        "github_configured": bool(config.GITHUB_OAUTH_CLIENT_ID),
+        "github_connected": entry is not None,
+        "github_login": entry.user_login if entry else "",
+    }
+
+
+async def _apply_repo_selection(request: Request, s) -> None:
+    """Copy the user's picked private repos + their GitHub token onto the
+    session (server-side) so the wizard can ground drafting in them. The token
+    never goes back to the browser; only the opaque session cookie does."""
+    if s.project_type != "existing":
+        return
+    form = await request.form()
+    s.selected_repos = [r.strip() for r in form.getlist("selected_repos") if r and r.strip()]
+    rec = current_auth(request)
+    entry = rec.provider("github") if rec else None
+    if entry is not None:
+        s.github_token = entry.access_token
+
+
 # Background wizard jobs are fire-and-forget. Keep a strong reference (a bare
 # create_task() may be garbage-collected before it finishes) and log any
 # unhandled exception (otherwise it's swallowed and the session is left stuck
@@ -208,7 +233,8 @@ async def settings_models(request: Request, base_url: str = Form(""),
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
-    return _render("step1_idea.html", request, **_calibration_ctx())
+    return _render("step1_idea.html", request, **_calibration_ctx(),
+                   **_github_ctx(request))
 
 
 @app.get("/sessions/{sid}", response_class=HTMLResponse)
@@ -227,7 +253,8 @@ async def resume(request: Request, sid: str):
     if s.phase == "final":
         return _render("step6_final.html", request, s=s,
                        mega_prompt=flow.assemble_final(s))
-    return _render("step1_idea.html", request, **_calibration_ctx())
+    return _render("step1_idea.html", request, **_calibration_ctx(),
+                   **_github_ctx(request))
 
 
 @app.get("/sessions/{sid}/back/{to}", response_class=HTMLResponse)
@@ -240,7 +267,8 @@ async def go_back(request: Request, sid: str, to: str):
         # Re-edit the brain dump with the prior inputs prefilled. (Submitting
         # again starts a fresh draft — accepted.)
         return _render("step1_idea.html", request, idea=s.idea, repo_url=s.repo_url,
-                       sel_project_type=s.project_type, **_calibration_ctx())
+                       sel_project_type=s.project_type, **_calibration_ctx(),
+                       **_github_ctx(request))
     if to == "clarify":
         s.phase = "clarify"
         return _render("resume.html", request, body="step3_clarify.html", s=s)
@@ -259,6 +287,7 @@ async def create_session(request: Request, idea: str = Form(...),
     # form_factor is inferred from the idea in run_clarify; stakes is fixed.
     s.project_type, s.form_factor, s.stakes = project_type, "", DEFAULT_STAKES
     s.repo_url = repo_url.strip() if project_type == "existing" else ""
+    await _apply_repo_selection(request, s)
     s.phase = "clarify"
     _spawn(flow.run_clarify(s))
     return _render("step3_clarify.html", request, headers=_push(s), s=s)
@@ -273,6 +302,7 @@ async def moonshot(request: Request, idea: str = Form(...),
     # rest (form factor always inferred now). Stakes is fixed to the default.
     s.project_type, s.form_factor, s.stakes = project_type, "", DEFAULT_STAKES
     s.repo_url = repo_url.strip() if project_type == "existing" else ""
+    await _apply_repo_selection(request, s)
     s.phase = "moonshot"
     _spawn(flow.run_moonshot(s))
     return _render("step_moonshot.html", request, headers=_push(s), s=s)
@@ -724,6 +754,28 @@ async def github_logout(request: Request):
     resp = Response(status_code=204, headers={"HX-Refresh": "true"})
     _clear_auth_cookie(resp)
     return resp
+
+
+@app.get("/api/github/repos", response_class=HTMLResponse)
+async def github_repos(request: Request):
+    """The signed-in user's private repos, as a searchable multi-select partial.
+    401 (not signed in / token rejected) renders the re-authorize modal instead,
+    which the client swaps in via the htmx:beforeSwap 401 handler."""
+    rec = current_auth(request)
+    entry = rec.provider("github") if rec else None
+    if entry is None:
+        return HTMLResponse(
+            _html("partials/github_error.html",
+                  reason="You're not signed in to GitHub. Log in to pick your private repos."),
+            status_code=401)
+    try:
+        repos = await repo.list_private_repos(entry.access_token)
+    except repo.GitHubAuthError:
+        return HTMLResponse(
+            _html("partials/github_error.html",
+                  reason="GitHub rejected your session (the token expired or was revoked)."),
+            status_code=401)
+    return _render("partials/github_repos.html", request, repos=repos)
 
 
 @app.on_event("shutdown")

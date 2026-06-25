@@ -74,6 +74,8 @@ class Session:
     form_factor: str = ""
     repo_url: str = ""       # existing projects: link to the codebase
     repo_context: str = ""   # fetched repo summary injected into drafting prompts
+    selected_repos: list[str] = field(default_factory=list)  # private repos (owner/name) picked after GitHub login
+    github_token: str = ""   # the picker's OAuth token, copied server-side at session create (never sent to the browser)
     qas: list[QA] = field(default_factory=list)
     sections: list[Section] = field(default_factory=list)
     phase: str = "idea"  # idea | clarify | sections | moonshot | final
