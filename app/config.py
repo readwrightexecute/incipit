@@ -147,6 +147,20 @@ ATLASSIAN_OAUTH_SCOPES = os.environ.get(
     "INCIPIT_ATLASSIAN_OAUTH_SCOPES",
     "read:jira-work write:jira-work read:jira-user")
 
+# --- Jira export (issue creation over REST v3) -----------------------------
+# Issue types offered in the export dropdown. Defaults match a standard Jira
+# Cloud software/business project; override per-instance if your projects use a
+# different scheme.
+JIRA_ISSUE_TYPES = [
+    t.strip() for t in os.environ.get(
+        "INCIPIT_JIRA_ISSUE_TYPES", "Task,Story,Bug").split(",") if t.strip()
+]
+# Optional project key to pre-select in the export dropdown (blank = none).
+JIRA_DEFAULT_PROJECT_KEY = os.environ.get("INCIPIT_JIRA_DEFAULT_PROJECT_KEY", "")
+# End-to-end export time budget in milliseconds (create issue + attach .md).
+# The route enforces it; an overrun returns a clear per-export failure message.
+JIRA_EXPORT_TIMEOUT_MS = _int("INCIPIT_JIRA_EXPORT_TIMEOUT", 4000)
+
 # Secret used to sign the opaque session-id cookie (itsdangerous). If unset we
 # generate an ephemeral per-process secret: cookies then work within a single
 # run but don't survive a restart — acceptable for the single-replica design,

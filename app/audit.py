@@ -43,3 +43,10 @@ def token_revoked(provider: str, user_id: str = "", user_login: str = "",
                   **extra) -> None:
     """Record that a provider token was revoked / the user logged out."""
     _emit("token_revoked", provider, user_id, user_login, **extra)
+
+
+def jira_export(project_key: str, issue_key: str, user_id: str = "",
+                user_login: str = "", **extra) -> None:
+    """Record that a mega-prompt was exported to a Jira issue."""
+    _emit("jira_export", "atlassian", user_id, user_login,
+          project=project_key or "-", issue=issue_key or "-", **extra)

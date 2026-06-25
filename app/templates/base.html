@@ -290,9 +290,10 @@
     }
   }
 
-  // Let 401 responses (e.g. /api/github/repos once the GitHub session lapses)
-  // swap their body in, so the re-authorize modal renders instead of htmx
-  // dropping the response as an error.
+  // Let 401 responses (e.g. /api/github/repos, /api/jira/projects or
+  // /api/jira/export once the GitHub/Atlassian session lapses) swap their body
+  // in, so the re-authorize modal renders instead of htmx dropping the response
+  // as an error.
   document.body.addEventListener('htmx:beforeSwap', function (e) {
     if (e.detail.xhr && e.detail.xhr.status === 401) {
       e.detail.shouldSwap = true;
