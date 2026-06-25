@@ -104,7 +104,7 @@ only to read your private repos for grounding; it does not gate the app.
 For existing-codebase specs you can sign in with GitHub so the wizard can read
 your **private** repos. The user's access token is stored **server-side only**
 (in-memory, `app/auth.py`); the browser cookie carries just a signed, opaque
-session id (`HttpOnly` + `Secure` + `SameSite=Strict`). Configure the OAuth app:
+session id (`HttpOnly` + `Secure` + `SameSite=Lax`). Configure the OAuth app:
 
 | Env var | What |
 |---|---|

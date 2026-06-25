@@ -128,11 +128,19 @@ def _read_sid(request: Request) -> str | None:
 
 def _set_auth_cookie(response: Response, sid: str) -> None:
     """Attach the signed session-id cookie with the hardened flags
-    (HttpOnly + SameSite=Strict, Secure unless explicitly disabled for dev)."""
+    (HttpOnly + Secure unless explicitly disabled for dev).
+
+    SameSite is Lax, not Strict: the OAuth callbacks (/auth/*/callback) are
+    reached via a top-level cross-site redirect from github.com /
+    auth.atlassian.com, and a Strict cookie is NOT sent on that navigation, so
+    the server could not recover the session id to validate the OAuth `state`.
+    Lax is sent on top-level cross-site GETs while still being withheld from
+    cross-site subrequests, so it preserves the CSRF protection that matters
+    here (the token stays HttpOnly + server-side regardless)."""
     response.set_cookie(
         AUTH_COOKIE, _serializer().dumps(sid),
         max_age=config.SESSION_TTL, httponly=True,
-        secure=config.COOKIE_SECURE, samesite="strict", path="/",
+        secure=config.COOKIE_SECURE, samesite="lax", path="/",
     )
 
 

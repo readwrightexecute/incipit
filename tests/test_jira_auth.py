@@ -77,7 +77,8 @@ def test_login_sets_hardened_cookie(monkeypatch):
     assert "incipit_auth=" in low
     assert "httponly" in low
     assert "secure" in low
-    assert "samesite=strict" in low
+    # Lax (not Strict) so the cookie survives the cross-site OAuth callback.
+    assert "samesite=lax" in low
     assert "path=/" in low
 
 
