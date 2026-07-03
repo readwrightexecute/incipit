@@ -201,20 +201,29 @@ def init_sections(s: Session) -> None:
     s.party_changes = []
 
 
-async def run_sections(s: Session) -> None:
+async def run_sections(s: Session, sections: list[Section] | None = None) -> None:
+    # `sections` is the snapshot this job owns (pass s.sections at spawn time).
+    # Re-submitting the clarify answers replaces s.sections (init_sections) and
+    # spawns a new job; without the snapshot the stale job would keep mutating
+    # sections out from under the new one. The stale job detects the swap at
+    # each section boundary and quietly stops.
+    if sections is None:
+        sections = s.sections
     tmpl = _jinja.get_template("section.md.j2")
     qas = [
         {"question": q.question, "answer": q.answer or f"(assumed) {q.assumption}"}
         for q in s.qas
     ]
-    total = len(s.sections)
-    for i, sec in enumerate(s.sections, 1):
+    total = len(sections)
+    for i, sec in enumerate(sections, 1):
+        if s.sections is not sections:
+            return  # superseded by a newer answers submission
         try:
             sec.status = "generating"
             await _emit(s, "section_started", sec.id)
             prior = [
                 {"title": p.title, "content": p.content}
-                for p in s.sections
+                for p in sections
                 if p.status == "done"
             ]
             prompt = tmpl.render(
@@ -229,6 +238,8 @@ async def run_sections(s: Session) -> None:
             sec.status = "error"
             sec.content = f"_Generation failed: {e}_"
             await _emit(s, "section_error", sec.id)
+    if s.sections is not sections:
+        return  # superseded while the last section was generating
     await _emit(s, "job_done", "sections")
     if s.auto_party:
         # "Submit & Party" from the clarify step: review the fresh draft.
@@ -698,8 +709,12 @@ async def run_moonshot(s: Session) -> None:
             s.stakes = s.stakes or i_stakes
             s.form_factor = s.form_factor or i_form
             s.project_type = s.project_type or i_proj
+        # Escaped: the moon channel is innerHTML-swapped client-side without
+        # server-side escaping, so interpolated session fields must be inert.
         await _emit(s, "moon",
-                    f"🎯 Treating this as a {s.stakes} {s.form_factor} ({s.project_type} project).")
+                    f"🎯 Treating this as a {html.escape(s.stakes)} "
+                    f"{html.escape(s.form_factor)} "
+                    f"({html.escape(s.project_type)} project).")
 
         await _emit(s, "moon", "❓ Drafting clarifying questions and accepting the smart defaults…")
         await run_clarify(s)  # answers left blank → each [ASSUMPTION] stands
