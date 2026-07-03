@@ -146,8 +146,10 @@ async def settings_save(request: Request, base_url: str = Form(""),
 async def settings_models(request: Request, base_url: str = Form(""),
                           api_key: str = Form("")):
     from app.llm.openai_compat import list_models
+    # The settings form never echoes the saved key (the field is blank on every
+    # load), so an empty submission means "use the stored key", not "no key".
     try:
-        models = await list_models(base_url, api_key)
+        models = await list_models(base_url, api_key.strip() or settings.current.api_key)
     except GenerationError as e:
         return _render("partials/model_options.html", request, models=[], error=str(e))
     return _render("partials/model_options.html", request, models=models, error="")
