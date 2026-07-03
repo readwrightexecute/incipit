@@ -43,6 +43,18 @@ def _cap(text: str) -> str:
     return text[:MAX_INPUT_CHARS]
 
 
+_VALID_PROJECT_TYPES = {value for value, _, _ in PROJECT_TYPES}
+
+
+def _clean_project_type(value: str) -> str:
+    """Constrain the project_type form field to the known values. The field is
+    a fixed radio set in the UI, so anything else is a tampered request; it
+    also flows into HTML via the SSE `moon` channel, so it must never carry
+    arbitrary text."""
+    value = value.strip().lower()
+    return value if value in _VALID_PROJECT_TYPES else ""
+
+
 # (value, human label) for the settings reasoning-effort <select>. Values must
 # stay in sync with settings.REASONING_EFFORTS.
 REASONING_EFFORT_OPTIONS = [
@@ -203,6 +215,7 @@ async def create_session(request: Request, idea: str = Form(...),
                          project_type: str = Form(...), repo_url: str = Form("")):
     s = state.create()
     s.idea = _cap(idea.strip())
+    project_type = _clean_project_type(project_type)
     # form_factor is inferred from the idea in run_clarify; stakes is fixed.
     s.project_type, s.form_factor, s.stakes = project_type, "", DEFAULT_STAKES
     s.repo_url = repo_url.strip() if project_type == "existing" else ""
@@ -216,6 +229,7 @@ async def moonshot(request: Request, idea: str = Form(...),
                    project_type: str = Form(""), repo_url: str = Form("")):
     s = state.create()
     s.idea = _cap(idea.strip())
+    project_type = _clean_project_type(project_type)
     # Honor the project_type the user set on step 1; run_moonshot infers the
     # rest (form factor always inferred now). Stakes is fixed to the default.
     s.project_type, s.form_factor, s.stakes = project_type, "", DEFAULT_STAKES
@@ -256,7 +270,10 @@ async def answers(request: Request, sid: str):
     # "Submit & Party" sets party=1: convene the round table once the draft lands.
     s.auto_party = bool(form.get("party"))
     flow.init_sections(s)
-    _spawn(flow.run_sections(s))
+    # Pass the fresh section list as the job's snapshot: a re-submission
+    # replaces s.sections, and the superseded job detects that and stops
+    # instead of racing the new one on stale Section objects.
+    _spawn(flow.run_sections(s, s.sections))
     return _render("step4_sections.html", request, headers=_push(s), s=s,
                    examples=flow.REFINE_EXAMPLES, auto_party=s.auto_party)
 
@@ -331,6 +348,10 @@ async def party_start(request: Request, sid: str):
     if s is None:
         return _render("expired.html", request)
     if s.party_status != "running":
+        # Claim the run synchronously — the spawned task only flips the status
+        # after it is scheduled, so a rapid double-click would launch two
+        # round tables that clobber each other's messages and changes.
+        s.party_status = "running"
         _spawn(flow.run_party(s))
     return _render("partials/party_panel.html", request, s=s)
 
@@ -427,6 +448,7 @@ async def party_questions_start(request: Request, sid: str):
     if s is None:
         return _render("expired.html", request)
     if s.party_status != "running":
+        s.party_status = "running"  # claim synchronously (see party_start)
         _spawn(flow.run_party_questions(s))
     return _render("partials/party_qa_panel.html", request, s=s)
 
