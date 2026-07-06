@@ -449,6 +449,15 @@ async def party_questions_start(request: Request, sid: str):
     s = state.get(sid)
     if s is None:
         return _render("expired.html", request)
+    # The party button sits inside the answers form, so htmx includes the
+    # answer fields in this POST. Persist them before convening the round
+    # table — otherwise the personas review empty answers and the next
+    # question-list re-render wipes the user's typed text.
+    form = await request.form()
+    for i, qa in enumerate(s.qas):
+        val = form.get(f"answer_{i}")
+        if val is not None:
+            qa.answer = _cap(str(val).strip())
     if s.party_status != "running":
         s.party_status = "running"  # claim synchronously (see party_start)
         _spawn(flow.run_party_questions(s))
