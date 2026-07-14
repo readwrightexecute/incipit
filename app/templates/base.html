@@ -39,6 +39,15 @@
       src: url("/static/fonts/geist-mono-latin-wght-normal.woff2") format("woff2");
       font-weight: 100 900; font-style: normal; font-display: swap;
     }
+    /* Spinner-only: Geist Mono lacks the block/shape glyphs the spinner frames
+       use (▁▃▅▇, ▰▱, ✦…), and per-glyph fallback fonts render them at varying
+       widths, making adjacent text jump. Departure Mono covers them all at one
+       fixed width. */
+    @font-face {
+      font-family: "Departure Mono";
+      src: url("/static/fonts/DepartureMono-Regular.woff2") format("woff2");
+      font-weight: 400; font-style: normal; font-display: swap;
+    }
 
     /* ---- Color tokens: light theme ---- */
     :root {
@@ -335,7 +344,7 @@
 
     /* ---- ASCII spinner (frames driven by /static/spinner.js; single calm color,
             no rainbow — color cycling is disabled in the engine) ---- */
-    .spinner { display: inline-block; font-family: var(--mono); white-space: pre; color: var(--muted-foreground); }
+    .spinner { display: inline-block; font-family: "Departure Mono", var(--mono); white-space: pre; color: var(--muted-foreground); }
     @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
     @keyframes bubble-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
     @keyframes cursor-blink { 50% { opacity: 0; } }

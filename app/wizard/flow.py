@@ -489,7 +489,8 @@ async def run_party(s: Session) -> None:
         s.party_changes = []
         await _emit(s, "party_started")
         spec = assemble_final(s)
-        moonshot = s.phase == "moonshot"
+        # phase moves to "sections" during drafting, so key off moonshot_status
+        moonshot = s.moonshot_status == "running"
         await _say(s, PartyMessage("system", "", "", "",
             "🎤 Round table convened. Each reviewer speaks once, then the facilitator "
             "passes the mic back to resolve any disagreements until the group reaches "
