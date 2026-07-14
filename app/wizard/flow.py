@@ -99,12 +99,12 @@ async def _emit(s: Session, event: str, data: str = "") -> None:
     s.publish(event, data)
 
 
-async def _generate(s: Session, prompt: str, max_tokens: int = 2048,
-                    label: str = "Working") -> str:
-    """One LLM call with a contextual progress/model-loading heartbeat."""
+async def _with_status(s: Session, label: str, coro):
+    """Run an LLM coroutine while a contextual progress/model-loading heartbeat
+    feeds the status bar, then clear the bar when it finishes."""
     notify_task = asyncio.create_task(_heartbeat(s, label))
     try:
-        return await backend.generate(prompt, system=SYSTEM, max_tokens=max_tokens)
+        return await coro
     finally:
         notify_task.cancel()
         # _heartbeat swallows CancelledError and returns, so awaiting it here
@@ -118,6 +118,13 @@ async def _generate(s: Session, prompt: str, max_tokens: int = 2048,
         except asyncio.CancelledError:
             pass
         await _emit(s, "progress", "")
+
+
+async def _generate(s: Session, prompt: str, max_tokens: int = 2048,
+                    label: str = "Working") -> str:
+    """One LLM call with a contextual progress/model-loading heartbeat."""
+    return await _with_status(
+        s, label, backend.generate(prompt, system=SYSTEM, max_tokens=max_tokens))
 
 
 def _anim_for(label: str) -> str:
@@ -679,7 +686,11 @@ async def _infer_calibration(s: Session) -> tuple[str, str, str]:
     )
     stakes, form_factor, project_type = "internal", "web app", "new"
     try:
-        raw = await _party_gen(prompt, max_tokens=48)
+        # Usually the first model call of a run, so this is where a cold start /
+        # model switch lands — wrap it in the heartbeat so the status bar shows
+        # the "loading model" graphic instead of nothing.
+        raw = await _with_status(
+            s, "Reading your idea", _party_gen(prompt, max_tokens=48))
     except Exception:
         return stakes, form_factor, project_type
     for ln in raw.splitlines():

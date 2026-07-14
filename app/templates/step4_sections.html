@@ -1,7 +1,10 @@
 <script id="session-meta" type="application/json">{"id": "{{ s.id }}", "idea": {{ s.idea|tojson }}, "phase": "{{ s.phase }}"}</script>
 <h2 class="step-label" id="top" data-step="sections">Step 3 of 3 — Draft &amp; refine</h2>
 <div hx-ext="sse" sse-connect="/sessions/{{ s.id }}/events">
-  <div id="status-bar" role="status" aria-live="polite" sse-swap="model_loading,progress,error"></div>
+  {# While any section is still queued/drafting, show a cold-start graphic on
+     first paint (the SSE heartbeat replaces it). Omitted on a fully-drafted
+     resume so a stale "loading" line can't linger with nothing to clear it. #}
+  <div id="status-bar" role="status" aria-live="polite" sse-swap="model_loading,progress,error">{% if s.sections | selectattr("status", "in", ["pending", "generating"]) | list %}<span class="spinner" data-anim="pulse"></span> Loading model (cold start, can take a minute)…{% endif %}</div>
 
   {# Section cards. Refetched as a group when a background pass (Implement
      fixes / party) rewrites sections — sse:sections_updated fires only then. #}
