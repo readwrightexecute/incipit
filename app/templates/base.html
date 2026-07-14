@@ -287,11 +287,15 @@
       gap: 12px; padding: 0 24px;
       background: var(--background); border-bottom: 1px solid var(--border);
     }
+    /* Brand: primary square icon by grey wordmark. */
     .brand { display: inline-flex; align-items: center; gap: 8px;
-      font-size: 14px; font-weight: 600; color: var(--foreground); }
-    .brand:hover { text-decoration: none; color: var(--foreground); }
+      font-size: 14px; font-weight: 600; color: var(--muted-foreground); }
+    .brand:hover { text-decoration: none; color: var(--muted-foreground); }
     .brand-mark { width: 20px; height: 20px; border-radius: 6px; background: var(--primary); flex: 0 0 auto; }
     .topbar-actions { display: flex; align-items: center; gap: 8px; }
+    /* Pico gives buttons a bottom margin; zero it so both header buttons sit
+       perfectly centered in the 56px bar and align with each other. */
+    .topbar-actions button { margin: 0; }
 
     /* ---- App ---- */
     /* Step label: current-step marker (active-context treatment). */
