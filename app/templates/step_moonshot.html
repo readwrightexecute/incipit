@@ -1,12 +1,7 @@
 <script id="session-meta" type="application/json">{"id": "{{ s.id }}", "idea": {{ s.idea|tojson }}, "phase": "{{ s.phase }}"}</script>
 <h2 class="step-label" data-step="moonshot">🌙 Shoot the Moon</h2>
 <div hx-ext="sse" sse-connect="/sessions/{{ s.id }}/events">
-  <p><span class="spinner"></span> Running the whole thing on your idea — calibration,
-    smart-default answers, a full spec draft, then a BMAD round table whose consensus
-    is applied automatically. This takes a few minutes; watch it unfold below.</p>
-
-  {# Cold-start graphic on first paint; the live SSE feed (moon steps + model
-     heartbeat) replaces it as soon as the stream connects. #}
+  {# First-paint cold-start status; the live SSE feed replaces it on connect. #}
   <div id="status-bar" role="status" aria-live="polite" sse-swap="model_loading,progress,moon,error"><span class="spinner" data-anim="pulse"></span> Loading model (cold start, can take a minute)…</div>
   <div id="party-turn" class="party-turn" role="status" aria-live="polite" sse-swap="party_turn"></div>
 
