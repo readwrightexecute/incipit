@@ -489,10 +489,14 @@ async def run_party(s: Session) -> None:
         s.party_changes = []
         await _emit(s, "party_started")
         spec = assemble_final(s)
+        # phase moves to "sections" during drafting, so key off moonshot_status
+        moonshot = s.moonshot_status == "running"
         await _say(s, PartyMessage("system", "", "", "",
             "🎤 Round table convened. Each reviewer speaks once, then the facilitator "
             "passes the mic back to resolve any disagreements until the group reaches "
-            "consensus. Then you'll approve or deny the agreed changes.", "system"))
+            "consensus. " + ("The agreed changes are applied automatically."
+                             if moonshot else
+                             "Then you'll approve or deny the agreed changes."), "system"))
 
         await _round_table(s, spec)
 
@@ -509,7 +513,7 @@ async def run_party(s: Session) -> None:
         n = len(s.party_changes)
         await _say(s, PartyMessage("system", "", "", "",
             f"✅ Consensus reached — {n} proposed change{'' if n == 1 else 's'}. "
-            "Review them below." if n else
+            + ("Applying them now." if moonshot else "Review them below.") if n else
             "✅ The group reviewed the spec and proposed no changes.", "system"))
         await _emit(s, "party_ready")
     except Exception as e:
