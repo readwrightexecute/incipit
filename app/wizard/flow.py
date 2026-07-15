@@ -10,7 +10,7 @@ from pathlib import Path
 import yaml
 from jinja2 import Environment, FileSystemLoader
 
-from app import config, repo
+from app import auth, config, repo
 from app.llm.base import GenerationError, get_backend
 from app.wizard import state
 from app.wizard.state import QA, PartyChange, PartyMessage, PartyQAChange, Section, Session
@@ -80,10 +80,12 @@ async def _ensure_repo_context(s: Session) -> None:
                 '<span class="spinner" data-anim="pulse"></span> Reading the repo…')
     budget = config.REPO_CONTEXT_MAX_CHARS
     parts: list[str] = []
-    for full_name in s.selected_repos:
+    github = auth.get_provider(s.github_auth_id, "github")
+    github_token = github.access_token if github else ""
+    for full_name in s.selected_repos if github_token else []:
         if budget <= 0:
             break
-        ctx = (await repo.fetch_selected_repo_context(full_name, s.github_token))[:budget]
+        ctx = (await repo.fetch_selected_repo_context(full_name, github_token))[:budget]
         if ctx:
             parts.append(ctx)
             budget -= len(ctx)

@@ -154,6 +154,9 @@ are flagged — never commit them.
 | `INCIPIT_OPENAI_BASE_URL` | OpenAI-compatible endpoint base URL | `http://localhost:11434/v1` |
 | `INCIPIT_OPENAI_MODEL` | Default model id (overridable in the UI) | _(empty)_ |
 | `INCIPIT_OPENAI_API_KEY` | API key for the endpoint (**secret**) | _(empty)_ |
+| `WEBUI_API_URL` | Doppler/Open WebUI endpoint alias; an origin is normalized to `/api` | _(empty)_ |
+| `WEBUI_MODEL` | Model alias used when `INCIPIT_OPENAI_MODEL` is unset | _(empty)_ |
+| `WEBUI_API_KEY` | API-key alias used when `INCIPIT_OPENAI_API_KEY` is unset (**secret**) | _(empty)_ |
 | `INCIPIT_REASONING_EFFORT` | `default` \| `none` \| `low` \| `medium` \| `high` | `default` |
 | `INCIPIT_DISABLE_THINKING` | Back-compat: truthy → `reasoning_effort=none` | _(unset)_ |
 | `INCIPIT_ALLOWED_BASE_URL_HOSTS` | Extra hosts allowed for the model endpoint (SSRF allow-list) | _(empty)_ |

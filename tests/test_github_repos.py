@@ -180,8 +180,10 @@ def test_ensure_repo_context_concatenates_selected_repos(monkeypatch):
     monkeypatch.setattr(flow.repo, "fetch_selected_repo_context", fake_selected)
     monkeypatch.setattr(flow.repo, "fetch_repo_context", fake_url)
 
+    rec = auth.create_auth()
+    auth.set_provider(rec, "github", access_token="tok")
     s = state.Session(id="t", created=0.0, project_type="existing",
-                      selected_repos=["o/a", "o/b"], github_token="tok",
+                      selected_repos=["o/a", "o/b"], github_auth_id=rec.id,
                       repo_url="https://github.com/o/c")
     _run(flow._ensure_repo_context(s))
 
@@ -205,8 +207,10 @@ def test_ensure_repo_context_respects_token_budget(monkeypatch):
     monkeypatch.setattr(flow.repo, "fetch_selected_repo_context", fake_selected)
     monkeypatch.setattr(flow.repo, "fetch_repo_context", fake_url)
 
+    rec = auth.create_auth()
+    auth.set_provider(rec, "github", access_token="tok")
     s = state.Session(id="t", created=0.0, project_type="existing",
-                      selected_repos=["o/a"], github_token="tok",
+                      selected_repos=["o/a"], github_auth_id=rec.id,
                       repo_url="https://github.com/o/c")
     _run(flow._ensure_repo_context(s))
     assert len(s.repo_context) <= 10

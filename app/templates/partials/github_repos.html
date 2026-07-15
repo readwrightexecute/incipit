@@ -5,7 +5,8 @@
   <div class="gh-repo-list" role="group" aria-label="Your private repositories">
     {% for r in repos %}
     <label class="gh-repo" data-name="{{ (r.full_name ~ ' ' ~ r.description)|lower }}">
-      <input type="checkbox" name="selected_repos" value="{{ r.full_name }}">
+      <input type="checkbox" name="selected_repos" value="{{ r.full_name }}"
+             {% if r.full_name in selected %}checked{% endif %}>
       <span class="gh-repo-name">{{ r.full_name }}</span>
       {% if r.description %}<small class="gh-repo-desc">— {{ r.description }}</small>{% endif %}
     </label>

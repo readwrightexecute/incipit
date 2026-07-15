@@ -3,6 +3,7 @@
 import logging
 import os
 import shlex
+from urllib.parse import urlparse
 
 try:
     from dotenv import load_dotenv
@@ -33,6 +34,19 @@ def _bool(name: str, default: bool) -> bool:
     if raw is None:
         return default
     return raw.strip().lower() in ("1", "true", "yes", "on")
+
+
+def _webui_api_base() -> str:
+    """Normalize a shared Open WebUI URL into its OpenAI-compatible API base."""
+    raw = os.environ.get("WEBUI_API_URL", "").strip().rstrip("/")
+    if not raw:
+        return ""
+    if raw.endswith("/chat/completions"):
+        return raw[: -len("/chat/completions")]
+    parsed = urlparse(raw)
+    if parsed.scheme and parsed.netloc and parsed.path in ("", "/"):
+        return raw + "/api"
+    return raw
 
 
 # Backend selection: openai | diffusion-cnv | diffusion-oneshot
@@ -70,11 +84,16 @@ LOAD_TIMEOUT = _int("INCIPIT_LOAD_TIMEOUT", 600)
 IDLE_TIMEOUT = _int("INCIPIT_IDLE_TIMEOUT", 600)
 
 # OpenAI-compatible endpoint (the default backend). Defaults target a local
-# Ollama install; override for LM Studio, llama-server, vLLM, or OpenAI proper.
-# These seed the runtime settings (app/settings.py), which the UI can override.
-OPENAI_BASE_URL = os.environ.get("INCIPIT_OPENAI_BASE_URL", "http://localhost:11434/v1")
-OPENAI_MODEL = os.environ.get("INCIPIT_OPENAI_MODEL", "")
-OPENAI_API_KEY = os.environ.get("INCIPIT_OPENAI_API_KEY", "")
+# Ollama install; override for LM Studio, llama-server, vLLM, Open WebUI, or
+# OpenAI proper. WEBUI_* aliases support shared Doppler configurations.
+WEBUI_API_BASE = _webui_api_base()
+OPENAI_BASE_URL = (
+    os.environ.get("INCIPIT_OPENAI_BASE_URL")
+    or WEBUI_API_BASE
+    or "http://localhost:11434/v1"
+)
+OPENAI_MODEL = os.environ.get("INCIPIT_OPENAI_MODEL") or os.environ.get("WEBUI_MODEL", "")
+OPENAI_API_KEY = os.environ.get("INCIPIT_OPENAI_API_KEY") or os.environ.get("WEBUI_API_KEY", "")
 
 # Reasoning effort sent to the OpenAI-compatible endpoint. One of:
 #   default          - omit the field entirely (the model decides)

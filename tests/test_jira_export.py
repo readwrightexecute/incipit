@@ -85,6 +85,15 @@ def test_create_issue_error_raises():
 
 
 @respx.mock
+def test_create_issue_transport_error_is_wrapped():
+    respx.post(f"{_REST}/issue").mock(side_effect=httpx.ConnectError("offline"))
+    with pytest.raises(jira.JiraError, match="transport failure"):
+        _run(jira.create_issue(
+            _CLOUD, "tok", project_key="ABC", summary="x",
+            issue_type="Task", description_adf={"type": "doc"}))
+
+
+@respx.mock
 def test_upload_attachment_multipart_and_header():
     route = respx.post(f"{_REST}/issue/ABC-7/attachments").mock(
         return_value=httpx.Response(200, json=[{"id": "10001", "filename": "mega-prompt.md"}]))
@@ -204,21 +213,25 @@ def test_export_unauthenticated_returns_401(monkeypatch):
     assert "Re-authorize" in resp.text
 
 
-@respx.mock
-def test_export_time_budget_overrun_reports_clearly(monkeypatch):
+def test_export_attachment_timeout_reports_created_issue(monkeypatch):
     monkeypatch.setattr(config, "JIRA_EXPORT_TIMEOUT_MS", 50)
 
-    async def _slow(*a, **k):
-        await asyncio.sleep(0.5)  # exceeds the 50ms budget
-        return {"key": "ABC-1", "url": "x", "attached": True}
+    async def _created(*a, **k):
+        return {"key": "ABC-1", "id": "1"}
 
-    monkeypatch.setattr(main, "_export_to_jira", _slow)
+    async def _attachment_timeout(*a, **k):
+        assert 0 < k["timeout"] <= 0.05
+        raise jira.JiraError("attachment upload transport failure: timed out")
+
+    monkeypatch.setattr(jira, "create_issue", _created)
+    monkeypatch.setattr(jira, "upload_attachment", _attachment_timeout)
     c = _atlassian_client(monkeypatch)
     s = _final_session()
     resp = c.post("/api/jira/export",
                   data={"sid": s.id, "project_key": "ABC", "issue_type": "Task"})
     assert resp.status_code == 200
-    assert "budget" in resp.text.lower()
+    assert "ABC-1" in resp.text
+    assert "failed" in resp.text.lower()
 
 
 def test_export_missing_project_reports(monkeypatch):

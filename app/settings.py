@@ -53,6 +53,9 @@ def allowed_base_url_hosts() -> set[str]:
     seeded_host = _hostname(config.OPENAI_BASE_URL)
     if seeded_host:
         hosts.add(seeded_host)
+    webui_host = _hostname(os.environ.get("WEBUI_API_URL", ""))
+    if webui_host:
+        hosts.add(webui_host)
     extra = os.environ.get("INCIPIT_ALLOWED_BASE_URL_HOSTS", "")
     hosts.update(
         host for host in (_hostname(part.strip()) for part in extra.split(",")) if host
@@ -65,6 +68,8 @@ def normalize_base_url(base_url: str) -> str:
     normalized = base_url.strip().rstrip("/")
     if not normalized:
         return ""
+    if normalized.endswith("/chat/completions"):
+        normalized = normalized[: -len("/chat/completions")]
     parsed = urlparse(normalized)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc or not parsed.hostname:
         raise SettingsError("Endpoint must be an http(s) URL with a host.")
@@ -77,6 +82,9 @@ def normalize_base_url(base_url: str) -> str:
             f"Endpoint host '{host}' is not allowed. "
             "Set INCIPIT_ALLOWED_BASE_URL_HOSTS to allow it."
         )
+    webui_host = _hostname(config.WEBUI_API_BASE)
+    if config.WEBUI_API_BASE and host == webui_host and parsed.path in ("", "/"):
+        return config.WEBUI_API_BASE
     return normalized
 
 

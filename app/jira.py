@@ -23,6 +23,10 @@ _MAX_PROJECT_PAGES = 20  # safety cap: up to 1000 projects
 class JiraError(Exception):
     """A Jira REST call failed (non-2xx response or transport error)."""
 
+    def __init__(self, message: str, *, status_code: int | None = None):
+        super().__init__(message)
+        self.status_code = status_code
+
 
 def _base(cloud_id: str) -> str:
     return f"{API_BASE}/{cloud_id}/rest/api/3"
@@ -51,10 +55,19 @@ async def list_projects(cloud_id: str, token: str, *,
                                  headers=_headers(token)) as c:
         start = 0
         for _ in range(_MAX_PROJECT_PAGES):
-            r = await c.get(url, params={"startAt": start, "maxResults": _PROJECT_PAGE})
+            try:
+                r = await c.get(
+                    url, params={"startAt": start, "maxResults": _PROJECT_PAGE})
+            except httpx.HTTPError as e:
+                raise JiraError(f"project/search transport failure: {e}") from e
             if r.status_code != 200:
-                raise JiraError(f"project/search returned {r.status_code}")
-            data = r.json()
+                raise JiraError(
+                    f"project/search returned {r.status_code}",
+                    status_code=r.status_code)
+            try:
+                data = r.json()
+            except ValueError as e:
+                raise JiraError("project/search returned invalid JSON") from e
             values = data.get("values", []) or []
             for p in values:
                 projects.append({"key": p.get("key", ""),
@@ -79,11 +92,19 @@ async def create_issue(cloud_id: str, token: str, *, project_key: str,
         "description": description_adf,
     }}
     headers = {**_headers(token), "Content-Type": "application/json"}
-    async with httpx.AsyncClient(timeout=_timeout(timeout), headers=headers) as c:
-        r = await c.post(url, json=payload)
+    try:
+        async with httpx.AsyncClient(timeout=_timeout(timeout), headers=headers) as c:
+            r = await c.post(url, json=payload)
+    except httpx.HTTPError as e:
+        raise JiraError(f"create issue transport failure: {e}") from e
     if r.status_code not in (200, 201):
-        raise JiraError(f"create issue failed ({r.status_code}): {_error_text(r)}")
-    data = r.json()
+        raise JiraError(
+            f"create issue failed ({r.status_code}): {_error_text(r)}",
+            status_code=r.status_code)
+    try:
+        data = r.json()
+    except ValueError as e:
+        raise JiraError("create issue returned invalid JSON") from e
     return {"key": data.get("key", ""), "id": str(data.get("id", ""))}
 
 
@@ -97,11 +118,19 @@ async def upload_attachment(cloud_id: str, token: str, issue_key: str,
     headers = {**_headers(token), "X-Atlassian-Token": "no-check"}
     blob = content.encode("utf-8") if isinstance(content, str) else content
     files = {"file": (filename, blob, "text/markdown")}
-    async with httpx.AsyncClient(timeout=_timeout(timeout), headers=headers) as c:
-        r = await c.post(url, files=files)
+    try:
+        async with httpx.AsyncClient(timeout=_timeout(timeout), headers=headers) as c:
+            r = await c.post(url, files=files)
+    except httpx.HTTPError as e:
+        raise JiraError(f"attachment upload transport failure: {e}") from e
     if r.status_code not in (200, 201):
-        raise JiraError(f"attachment upload failed ({r.status_code}): {_error_text(r)}")
-    return r.json()
+        raise JiraError(
+            f"attachment upload failed ({r.status_code}): {_error_text(r)}",
+            status_code=r.status_code)
+    try:
+        return r.json()
+    except ValueError as e:
+        raise JiraError("attachment upload returned invalid JSON") from e
 
 
 def _error_text(r: httpx.Response) -> str:

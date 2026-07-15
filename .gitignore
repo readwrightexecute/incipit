@@ -1,6 +1,7 @@
 __pycache__/
 *.pyc
 .promptgen.json
+.incipit.json
 .env
 .venv/
 .pytest_cache/

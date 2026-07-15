@@ -70,6 +70,7 @@ def test_login_redirects_to_atlassian_authorize(client):
 
 def test_login_sets_hardened_cookie(monkeypatch):
     monkeypatch.setattr(config, "ATLASSIAN_OAUTH_CLIENT_ID", "test-atl-id")
+    monkeypatch.setattr(config, "ATLASSIAN_OAUTH_CLIENT_SECRET", "test-secret")
     monkeypatch.setattr(config, "COOKIE_SECURE", True)
     c = TestClient(main.app)
     resp = c.get("/auth/atlassian/login", follow_redirects=False)
@@ -83,7 +84,8 @@ def test_login_sets_hardened_cookie(monkeypatch):
 
 
 def test_login_not_configured_returns_503(monkeypatch):
-    monkeypatch.setattr(config, "ATLASSIAN_OAUTH_CLIENT_ID", "")
+    monkeypatch.setattr(config, "ATLASSIAN_OAUTH_CLIENT_ID", "test-atl-id")
+    monkeypatch.setattr(config, "ATLASSIAN_OAUTH_CLIENT_SECRET", "")
     c = TestClient(main.app)
     resp = c.get("/auth/atlassian/login", follow_redirects=False)
     assert resp.status_code == 503
@@ -144,6 +146,21 @@ def test_callback_sends_authorization_code_grant_with_secret(client):
     assert sent["client_secret"] == "test-atl-secret"
     assert sent["code"] == "thecode"
     assert sent["redirect_uri"] == "https://app.example/auth/atlassian/callback"
+
+
+@respx.mock
+def test_callback_rejects_empty_accessible_resources(client):
+    respx.post(main.ATLASSIAN_TOKEN_URL).mock(
+        return_value=httpx.Response(200, json={
+            "access_token": "t", "refresh_token": "r", "expires_in": 3600}))
+    respx.get(main.ATLASSIAN_RESOURCES_URL).mock(
+        return_value=httpx.Response(200, json=[]))
+    _, state = _start_login(client)
+    resp = client.get(
+        f"/auth/atlassian/callback?code=abc&state={state}",
+        follow_redirects=False)
+    assert resp.status_code == 400
+    assert auth.get_auth(_sid_from_jar(client)).provider("atlassian") is None
 
 
 def test_callback_rejects_invalid_state(client):

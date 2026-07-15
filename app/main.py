@@ -4,7 +4,7 @@ import json
 import logging
 import time
 from pathlib import Path
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 import httpx
 from fastapi import FastAPI, Form, Request
@@ -156,13 +156,17 @@ def _set_auth_cookie(response: Response, sid: str) -> None:
     )
 
 
-def _clear_auth_cookie(response: Response) -> None:
-    response.delete_cookie(AUTH_COOKIE, path="/")
-
-
 def current_auth(request: Request) -> auth.AuthRecord | None:
     """Resolve the request's auth record (verified cookie → server-side store)."""
     return auth.get_auth(_read_sid(request))
+
+
+def _github_oauth_configured() -> bool:
+    return bool(config.GITHUB_OAUTH_CLIENT_ID and config.GITHUB_OAUTH_CLIENT_SECRET)
+
+
+def _atlassian_oauth_configured() -> bool:
+    return bool(config.ATLASSIAN_OAUTH_CLIENT_ID and config.ATLASSIAN_OAUTH_CLIENT_SECRET)
 
 
 def _github_ctx(request: Request) -> dict:
@@ -170,24 +174,28 @@ def _github_ctx(request: Request) -> dict:
     rec = current_auth(request)
     entry = rec.provider("github") if rec else None
     return {
-        "github_configured": bool(config.GITHUB_OAUTH_CLIENT_ID),
+        "github_configured": _github_oauth_configured(),
         "github_connected": entry is not None,
         "github_login": entry.user_login if entry else "",
     }
 
 
 async def _apply_repo_selection(request: Request, s) -> None:
-    """Copy the user's picked private repos + their GitHub token onto the
-    session (server-side) so the wizard can ground drafting in them. The token
-    never goes back to the browser; only the opaque session cookie does."""
+    """Record picked repos plus an auth-store reference for background fetches.
+
+    OAuth credentials remain exclusively in app.auth, so logout immediately
+    prevents in-flight wizard work from using the provider token.
+    """
     if s.project_type != "existing":
         return
     form = await request.form()
-    s.selected_repos = [r.strip() for r in form.getlist("selected_repos") if r and r.strip()]
+    s.selected_repos = [
+        r.strip() for r in form.getlist("selected_repos") if r and r.strip()
+    ][:10]
     rec = current_auth(request)
     entry = rec.provider("github") if rec else None
     if entry is not None:
-        s.github_token = entry.access_token
+        s.github_auth_id = rec.id
 
 
 def _atlassian_ctx(request: Request) -> dict:
@@ -196,7 +204,7 @@ def _atlassian_ctx(request: Request) -> dict:
     entry = rec.provider("atlassian") if rec else None
     meta = entry.meta if entry else {}
     return {
-        "atlassian_configured": bool(config.ATLASSIAN_OAUTH_CLIENT_ID),
+        "atlassian_configured": _atlassian_oauth_configured(),
         "atlassian_connected": entry is not None,
         "atlassian_site": meta.get("site_name") or meta.get("site_url", ""),
     }
@@ -303,7 +311,7 @@ async def go_back(request: Request, sid: str, to: str):
         # again starts a fresh draft — accepted.)
         return _render("step1_idea.html", request, idea=s.idea, repo_url=s.repo_url,
                        sel_project_type=s.project_type, **_calibration_ctx(),
-                       **_github_ctx(request))
+                       repo_selection_sid=s.id, **_github_ctx(request))
     if to == "clarify":
         s.phase = "clarify"
         return _render("resume.html", request, body="step3_clarify.html", s=s)
@@ -724,15 +732,22 @@ GITHUB_USER_URL = "https://api.github.com/user"
 
 
 def _safe_return_to(value: str | None) -> str:
-    """Only allow same-app relative redirects (no open-redirect via //host)."""
-    if value and value.startswith("/") and not value.startswith("//"):
+    """Only allow a clean same-app path, never a browser-normalized authority."""
+    if not value or "\\" in value or any(ord(ch) < 32 for ch in value):
+        return "/"
+    try:
+        parsed = urlsplit(value)
+    except ValueError:
+        return "/"
+    if (value.startswith("/") and not value.startswith("//")
+            and not parsed.scheme and not parsed.netloc):
         return value
     return "/"
 
 
 @app.get("/auth/github/login")
 async def github_login(request: Request, return_to: str = "/"):
-    if not config.GITHUB_OAUTH_CLIENT_ID:
+    if not _github_oauth_configured():
         return PlainTextResponse("GitHub login is not configured.", status_code=503)
     # Reuse an existing session if the cookie is valid, else start a new one.
     rec = current_auth(request) or auth.create_auth()
@@ -764,25 +779,31 @@ async def github_callback(request: Request, code: str = "", state: str = "",
         # User denied, or GitHub returned an error — back to where they started.
         return RedirectResponse(return_to, status_code=302)
 
-    async with httpx.AsyncClient(timeout=config.REPO_TIMEOUT) as c:
-        tok = await c.post(GITHUB_TOKEN_URL, headers={"Accept": "application/json"},
-                           data={
-                               "client_id": config.GITHUB_OAUTH_CLIENT_ID,
-                               "client_secret": config.GITHUB_OAUTH_CLIENT_SECRET,
-                               "code": code,
-                               "redirect_uri": config.GITHUB_OAUTH_REDIRECT_URL,
-                           })
-        token_data = tok.json() if tok.status_code == 200 else {}
-        access_token = token_data.get("access_token", "")
-        if not access_token:
-            return PlainTextResponse("GitHub did not return an access token.",
-                                     status_code=400)
-        ur = await c.get(GITHUB_USER_URL, headers={
-            "Accept": "application/vnd.github+json",
-            "Authorization": f"Bearer {access_token}",
-            "User-Agent": "incipit",
-        })
-        user = ur.json() if ur.status_code == 200 else {}
+    try:
+        async with httpx.AsyncClient(timeout=config.REPO_TIMEOUT) as c:
+            tok = await c.post(GITHUB_TOKEN_URL, headers={"Accept": "application/json"},
+                               data={
+                                   "client_id": config.GITHUB_OAUTH_CLIENT_ID,
+                                   "client_secret": config.GITHUB_OAUTH_CLIENT_SECRET,
+                                   "code": code,
+                                   "redirect_uri": config.GITHUB_OAUTH_REDIRECT_URL,
+                               })
+            token_data = tok.json() if tok.status_code == 200 else {}
+            access_token = token_data.get("access_token", "")
+            if not access_token:
+                return PlainTextResponse("GitHub did not return an access token.",
+                                         status_code=400)
+            ur = await c.get(GITHUB_USER_URL, headers={
+                "Accept": "application/vnd.github+json",
+                "Authorization": f"Bearer {access_token}",
+                "User-Agent": "incipit",
+            })
+            user = ur.json() if ur.status_code == 200 else {}
+    except (httpx.HTTPError, ValueError) as e:
+        log.warning("GitHub OAuth callback failed: %s", e)
+        return PlainTextResponse(
+            "GitHub authentication could not be completed. Please try again.",
+            status_code=502)
 
     auth.set_provider(rec, "github", access_token=access_token,
                       scope=token_data.get("scope", ""),
@@ -791,6 +812,7 @@ async def github_callback(request: Request, code: str = "", state: str = "",
                       user_login=user.get("login", ""))
     audit.token_issued("github", user_id=str(user.get("id", "")),
                        user_login=user.get("login", ""), scope=token_data.get("scope", ""))
+    rec.created = time.time()
     resp = RedirectResponse(return_to, status_code=302)
     _set_auth_cookie(resp, rec.id)  # refresh the cookie's max-age
     return resp
@@ -804,14 +826,12 @@ async def github_logout(request: Request):
         if entry is not None:
             audit.token_revoked("github", user_id=entry.user_id,
                                  user_login=entry.user_login)
-    # Clear the cookie and tell HTMX to refresh so the UI reflects logged-out.
-    resp = Response(status_code=204, headers={"HX-Refresh": "true"})
-    _clear_auth_cookie(resp)
-    return resp
+    # Keep the shared cookie: it may still reference an Atlassian provider.
+    return Response(status_code=204, headers={"HX-Refresh": "true"})
 
 
 @app.get("/api/github/repos", response_class=HTMLResponse)
-async def github_repos(request: Request):
+async def github_repos(request: Request, sid: str = ""):
     """The signed-in user's private repos, as a searchable multi-select partial.
     401 (not signed in / token rejected) renders the re-authorize modal instead,
     which the client swaps in via the htmx:beforeSwap 401 handler."""
@@ -829,7 +849,15 @@ async def github_repos(request: Request):
             _html("partials/github_error.html",
                   reason="GitHub rejected your session (the token expired or was revoked)."),
             status_code=401)
-    return _render("partials/github_repos.html", request, repos=repos)
+    except (httpx.HTTPError, ValueError) as e:
+        log.warning("github repository listing failed: %s", e)
+        return _render(
+            "partials/github_error.html", request,
+            reason="Couldn't load your GitHub repositories. Please try again.")
+    prior = state.get(sid) if sid else None
+    selected = set(prior.selected_repos) if prior else set()
+    return _render(
+        "partials/github_repos.html", request, repos=repos, selected=selected)
 
 
 # ---- Atlassian (Jira) OAuth 2.0 / 3LO login ---------------------------------
@@ -865,7 +893,7 @@ def _atlassian_scope() -> str:
 
 @app.get("/auth/atlassian/login")
 async def atlassian_login(request: Request, return_to: str = "/"):
-    if not config.ATLASSIAN_OAUTH_CLIENT_ID:
+    if not _atlassian_oauth_configured():
         return PlainTextResponse("Atlassian login is not configured.", status_code=503)
     rec = current_auth(request) or auth.create_auth()
     state = auth.new_state(rec, "atlassian", _safe_return_to(return_to))
@@ -898,27 +926,40 @@ async def atlassian_callback(request: Request, code: str = "", state: str = "",
         # User denied, or Atlassian returned an error — back to where they were.
         return RedirectResponse(return_to, status_code=302)
 
-    async with httpx.AsyncClient(timeout=config.REPO_TIMEOUT) as c:
-        tok = await c.post(ATLASSIAN_TOKEN_URL, json={
-            "grant_type": "authorization_code",
-            "client_id": config.ATLASSIAN_OAUTH_CLIENT_ID,
-            "client_secret": config.ATLASSIAN_OAUTH_CLIENT_SECRET,
-            "code": code,
-            "redirect_uri": config.ATLASSIAN_OAUTH_REDIRECT_URL,
-        })
-        token_data = tok.json() if tok.status_code == 200 else {}
-        access_token = token_data.get("access_token", "")
-        if not access_token:
-            return PlainTextResponse("Atlassian did not return an access token.",
-                                     status_code=400)
-        # Resolve the user's accessible Jira site(s) → cloudId + site URL.
-        rr = await c.get(ATLASSIAN_RESOURCES_URL, headers={
-            "Accept": "application/json",
-            "Authorization": f"Bearer {access_token}",
-        })
-        resources = rr.json() if rr.status_code == 200 else []
+    try:
+        async with httpx.AsyncClient(timeout=config.REPO_TIMEOUT) as c:
+            tok = await c.post(ATLASSIAN_TOKEN_URL, json={
+                "grant_type": "authorization_code",
+                "client_id": config.ATLASSIAN_OAUTH_CLIENT_ID,
+                "client_secret": config.ATLASSIAN_OAUTH_CLIENT_SECRET,
+                "code": code,
+                "redirect_uri": config.ATLASSIAN_OAUTH_REDIRECT_URL,
+            })
+            token_data = tok.json() if tok.status_code == 200 else {}
+            access_token = token_data.get("access_token", "")
+            if not access_token:
+                return PlainTextResponse("Atlassian did not return an access token.",
+                                         status_code=400)
+            # Resolve the user's accessible Jira site(s) → cloudId + site URL.
+            rr = await c.get(ATLASSIAN_RESOURCES_URL, headers={
+                "Accept": "application/json",
+                "Authorization": f"Bearer {access_token}",
+            })
+            resources = rr.json() if rr.status_code == 200 else []
+    except (httpx.HTTPError, ValueError) as e:
+        log.warning("Atlassian OAuth callback failed: %s", e)
+        return PlainTextResponse(
+            "Atlassian authentication could not be completed. Please try again.",
+            status_code=502)
 
-    first = resources[0] if isinstance(resources, list) and resources else {}
+    valid_resources = [
+        item for item in resources
+        if isinstance(item, dict) and item.get("id") and item.get("url")
+    ] if isinstance(resources, list) else []
+    if not valid_resources:
+        return PlainTextResponse(
+            "Atlassian returned no accessible Jira sites.", status_code=400)
+    first = valid_resources[0]
     meta = {
         "cloud_id": first.get("id", ""),
         "site_url": first.get("url", ""),
@@ -933,6 +974,7 @@ async def atlassian_callback(request: Request, code: str = "", state: str = "",
                       meta=meta)
     audit.token_issued("atlassian", user_id=meta["cloud_id"],
                        user_login=meta["site_name"], scope=token_data.get("scope", ""))
+    rec.created = time.time()
     resp = RedirectResponse(return_to, status_code=302)
     _set_auth_cookie(resp, rec.id)  # refresh the cookie's max-age
     return resp
@@ -986,10 +1028,12 @@ async def jira_projects(request: Request, sid: str = ""):
         projects = await jira.list_projects(cloud_id, entry.access_token)
     except jira.JiraError as e:
         log.warning("jira project/search failed: %s", e)
+        if e.status_code == 401:
+            return _jira_unauthorized()
         return HTMLResponse(
             _html("partials/jira_error.html",
-                  reason="Couldn't load your Jira projects. Re-authorize and try again."),
-            status_code=401)
+                  reason="Couldn't load your Jira projects. Please try again."),
+            status_code=200)
     return _render("partials/jira_projects.html", request, sid=sid, projects=projects,
                    issue_types=config.JIRA_ISSUE_TYPES,
                    default_project=config.JIRA_DEFAULT_PROJECT_KEY)
@@ -1019,17 +1063,16 @@ async def jira_export(request: Request, sid: str = Form(...),
     budget = config.JIRA_EXPORT_TIMEOUT_MS / 1000
 
     try:
-        result = await asyncio.wait_for(
-            _export_to_jira(cloud_id, entry.access_token, site_url,
-                            project_key, summary, issue_type, adf, md),
-            timeout=budget)
-    except asyncio.TimeoutError:
-        return _render("partials/jira_result.html", request, ok=False,
-                       message=(f"Export exceeded the {config.JIRA_EXPORT_TIMEOUT_MS}ms "
-                                "budget. Nothing partial was reported — please retry."))
+        result = await _export_to_jira(
+            cloud_id, entry.access_token, site_url,
+            project_key, summary, issue_type, adf, md, timeout=budget)
     except jira.JiraError as e:
+        if e.status_code == 401:
+            return _jira_unauthorized()
+        log.warning("jira issue creation failed: %s", e)
         return _render("partials/jira_result.html", request, ok=False,
-                       message=f"Jira rejected the export: {e}")
+                       message=("Jira did not confirm issue creation. Check Jira "
+                                "before retrying to avoid a duplicate."))
 
     audit.jira_export(project_key, result["key"], user_id=entry.user_id,
                       user_login=entry.user_login, attached=result["attached"])
@@ -1038,16 +1081,20 @@ async def jira_export(request: Request, sid: str = Form(...),
 
 
 async def _export_to_jira(cloud_id, token, site_url, project_key, summary,
-                          issue_type, adf, md) -> dict:
+                          issue_type, adf, md, *, timeout: float) -> dict:
     """Create the issue, then best-effort attach the raw .md. Attachment failure
     doesn't fail the export — the issue exists either way; we just flag it."""
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout
     issue = await jira.create_issue(
         cloud_id, token, project_key=project_key, summary=summary,
-        issue_type=issue_type, description_adf=adf)
+        issue_type=issue_type, description_adf=adf, timeout=timeout)
     key = issue["key"]
     attached = True
     try:
-        await jira.upload_attachment(cloud_id, token, key, "mega-prompt.md", md)
+        remaining = max(0.001, deadline - loop.time())
+        await jira.upload_attachment(
+            cloud_id, token, key, "mega-prompt.md", md, timeout=remaining)
     except jira.JiraError as e:
         log.warning("jira attachment failed for %s: %s", key, e)
         attached = False
@@ -1079,36 +1126,44 @@ async def refresh_atlassian_token(rec: auth.AuthRecord | None) -> auth.ProviderE
     entry = rec.provider("atlassian") if rec else None
     if entry is None:
         raise AtlassianAuthError("not signed in to Atlassian")
-    if not _atlassian_token_expiring(entry):
+    async with rec.refresh_lock:
+        # A concurrent request may have refreshed while this one waited.
+        entry = rec.provider("atlassian")
+        if entry is None:
+            raise AtlassianAuthError("not signed in to Atlassian")
+        if not _atlassian_token_expiring(entry):
+            return entry
+        if not entry.refresh_token:
+            raise AtlassianAuthError("Atlassian access token expired and no refresh token")
+        try:
+            async with httpx.AsyncClient(timeout=config.REPO_TIMEOUT) as c:
+                tok = await c.post(ATLASSIAN_TOKEN_URL, json={
+                    "grant_type": "refresh_token",
+                    "client_id": config.ATLASSIAN_OAUTH_CLIENT_ID,
+                    "client_secret": config.ATLASSIAN_OAUTH_CLIENT_SECRET,
+                    "refresh_token": entry.refresh_token,
+                })
+        except httpx.HTTPError as e:
+            raise AtlassianAuthError(f"Atlassian token refresh failed: {e}") from e
+        if tok.status_code != 200:
+            raise AtlassianAuthError("Atlassian rejected the refresh token")
+        try:
+            data = tok.json()
+        except ValueError as e:
+            raise AtlassianAuthError("Atlassian refresh returned invalid JSON") from e
+        new_token = data.get("access_token", "")
+        if not new_token:
+            raise AtlassianAuthError("Atlassian refresh returned no access token")
+        entry.access_token = new_token
+        entry.expires_at = _expires_at(data.get("expires_in"))
+        # Atlassian rotates refresh tokens; keep the new one when provided.
+        if data.get("refresh_token"):
+            entry.refresh_token = data["refresh_token"]
+        if data.get("scope"):
+            entry.scope = data["scope"]
+        audit.token_refreshed("atlassian", user_id=entry.user_id,
+                              user_login=entry.user_login, scope=entry.scope)
         return entry
-    if not entry.refresh_token:
-        raise AtlassianAuthError("Atlassian access token expired and no refresh token")
-    try:
-        async with httpx.AsyncClient(timeout=config.REPO_TIMEOUT) as c:
-            tok = await c.post(ATLASSIAN_TOKEN_URL, json={
-                "grant_type": "refresh_token",
-                "client_id": config.ATLASSIAN_OAUTH_CLIENT_ID,
-                "client_secret": config.ATLASSIAN_OAUTH_CLIENT_SECRET,
-                "refresh_token": entry.refresh_token,
-            })
-    except httpx.HTTPError as e:
-        raise AtlassianAuthError(f"Atlassian token refresh failed: {e}") from e
-    if tok.status_code != 200:
-        raise AtlassianAuthError("Atlassian rejected the refresh token")
-    data = tok.json()
-    new_token = data.get("access_token", "")
-    if not new_token:
-        raise AtlassianAuthError("Atlassian refresh returned no access token")
-    entry.access_token = new_token
-    entry.expires_at = _expires_at(data.get("expires_in"))
-    # Atlassian rotates refresh tokens; keep the new one when provided.
-    if data.get("refresh_token"):
-        entry.refresh_token = data["refresh_token"]
-    if data.get("scope"):
-        entry.scope = data["scope"]
-    audit.token_refreshed("atlassian", user_id=entry.user_id,
-                          user_login=entry.user_login, scope=entry.scope)
-    return entry
 
 
 @app.on_event("shutdown")

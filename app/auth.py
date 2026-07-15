@@ -11,6 +11,7 @@ simply logs in again). Generalized now so the Atlassian/Jira login can reuse
 the same store and cookie.
 """
 
+import asyncio
 import secrets
 import time
 import uuid
@@ -42,6 +43,9 @@ class AuthRecord:
     providers: dict[str, ProviderEntry] = field(default_factory=dict)
     # In-flight OAuth handshakes: CSRF state token -> {provider, return_to}.
     pending: dict[str, dict] = field(default_factory=dict)
+    # Atlassian rotates refresh tokens, so refreshes for one auth record must
+    # be serialized to avoid submitting the same token concurrently.
+    refresh_lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
 
     def provider(self, name: str) -> ProviderEntry | None:
         return self.providers.get(name)

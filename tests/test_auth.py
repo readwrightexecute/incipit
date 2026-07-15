@@ -59,6 +59,7 @@ def test_login_redirects_to_github_authorize(client):
 def test_login_sets_hardened_cookie(monkeypatch):
     # Secure flag is on by default; assert the full flag set on the raw header.
     monkeypatch.setattr(config, "GITHUB_OAUTH_CLIENT_ID", "test-client-id")
+    monkeypatch.setattr(config, "GITHUB_OAUTH_CLIENT_SECRET", "test-secret")
     monkeypatch.setattr(config, "COOKIE_SECURE", True)
     c = TestClient(main.app)
     resp = c.get("/auth/github/login", follow_redirects=False)
@@ -73,7 +74,8 @@ def test_login_sets_hardened_cookie(monkeypatch):
 
 
 def test_login_not_configured_returns_503(monkeypatch):
-    monkeypatch.setattr(config, "GITHUB_OAUTH_CLIENT_ID", "")
+    monkeypatch.setattr(config, "GITHUB_OAUTH_CLIENT_ID", "test-client-id")
+    monkeypatch.setattr(config, "GITHUB_OAUTH_CLIENT_SECRET", "")
     c = TestClient(main.app)
     resp = c.get("/auth/github/login", follow_redirects=False)
     assert resp.status_code == 503
@@ -149,10 +151,21 @@ def test_callback_with_error_param_redirects_back(client):
     assert resp.headers["location"] == "/sessions/xyz"
 
 
+@pytest.mark.parametrize("unsafe", [r"/\evil.example", "//evil.example", "https://evil.example"])
+def test_login_rejects_unsafe_return_to(client, unsafe):
+    _, state = _start_login(client, return_to=unsafe)
+    rec = auth.get_auth(_sid_from_jar(client))
+    assert auth.pop_state(rec, state, "github")["return_to"] == "/"
+
+
+def test_safe_return_to_rejects_malformed_authority():
+    assert main._safe_return_to("//[") == "/"
+
+
 # --- logout ------------------------------------------------------------------
 
 @respx.mock
-def test_logout_revokes_token_and_clears_cookie(client, caplog):
+def test_logout_revokes_only_github_and_keeps_shared_cookie(client, caplog):
     respx.post(main.GITHUB_TOKEN_URL).mock(
         return_value=httpx.Response(200, json={"access_token": "t", "scope": "repo"}))
     respx.get(main.GITHUB_USER_URL).mock(
@@ -160,19 +173,19 @@ def test_logout_revokes_token_and_clears_cookie(client, caplog):
     _, state = _start_login(client)
     client.get(f"/auth/github/callback?code=abc&state={state}", follow_redirects=False)
     sid = _sid_from_jar(client)
-    assert auth.get_auth(sid).provider("github") is not None
+    rec = auth.get_auth(sid)
+    assert rec.provider("github") is not None
+    auth.set_provider(rec, "atlassian", access_token="atl", refresh_token="refresh")
 
     with caplog.at_level(logging.INFO, logger="promptgen.audit"):
         resp = client.post("/auth/github/logout")
 
     assert resp.status_code == 204
     assert resp.headers.get("HX-Refresh") == "true"
-    # Cookie cleared (Max-Age=0 / past expiry).
-    set_cookie = resp.headers["set-cookie"].lower()
-    assert "incipit_auth=" in set_cookie
-    assert "max-age=0" in set_cookie or "expires=" in set_cookie
-    # Server-side token gone, revocation audited.
+    assert "set-cookie" not in resp.headers
+    # GitHub is gone, but the shared session and Atlassian provider remain.
     assert auth.get_auth(sid).provider("github") is None
+    assert auth.get_auth(sid).provider("atlassian").access_token == "atl"
     assert "token_revoked" in caplog.text
 
 
