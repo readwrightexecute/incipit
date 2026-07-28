@@ -33,9 +33,9 @@ def test_allowed_hosts_includes_builtin_defaults():
 
 
 def test_allowed_hosts_includes_seeded_base_url_host():
-    # config.OPENAI_BASE_URL defaults to http://localhost:11434/v1, so its
-    # host (localhost) is folded in.
-    assert "localhost" in allowed_base_url_hosts()
+    # config.OPENAI_BASE_URL defaults to the Nexus RTX 6000 vLLM proxy, so its
+    # host is folded into the runtime endpoint allow-list.
+    assert "nexus-vllm-proxy-rtx6000" in allowed_base_url_hosts()
 
 
 def test_allowed_hosts_picks_up_env_extra_hosts(monkeypatch):

@@ -61,11 +61,13 @@ GEN_TIMEOUT = _int("PROMPTGEN_GEN_TIMEOUT", 300)
 LOAD_TIMEOUT = _int("PROMPTGEN_LOAD_TIMEOUT", 600)
 IDLE_TIMEOUT = _int("PROMPTGEN_IDLE_TIMEOUT", 600)
 
-# OpenAI-compatible endpoint (the default backend). Defaults target a local
-# Ollama install; override for LM Studio, llama-server, vLLM, or OpenAI proper.
+# OpenAI-compatible endpoint (the default backend). Defaults target the Nexus
+# RTX 6000 vLLM proxy; override for Ollama, LM Studio, llama-server, or OpenAI.
 # These seed the runtime settings (app/settings.py), which the UI can override.
-OPENAI_BASE_URL = os.environ.get("PROMPTGEN_OPENAI_BASE_URL", "http://localhost:11434/v1")
-OPENAI_MODEL = os.environ.get("PROMPTGEN_OPENAI_MODEL", "")
+OPENAI_BASE_URL = os.environ.get(
+    "PROMPTGEN_OPENAI_BASE_URL", "http://nexus-vllm-proxy-rtx6000/v1"
+)
+OPENAI_MODEL = os.environ.get("PROMPTGEN_OPENAI_MODEL", "qwen3.6-35b-a3b-fp8")
 OPENAI_API_KEY = os.environ.get("PROMPTGEN_OPENAI_API_KEY", "")
 
 # Reasoning effort sent to the OpenAI-compatible endpoint. One of:

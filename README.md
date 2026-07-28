@@ -10,8 +10,8 @@ helps you converge it before you ship it to the agent.
   Ollama, LM Studio, llama.cpp `llama-server`, vLLM, or OpenAI itself.
 - **UI:** FastAPI + HTMX, server-rendered, no build step. Set your endpoint and
   model from the in-app **⚙ Model settings** panel (or via env).
-- **Tested with** `qwen3.6:35b` served over an OpenAI-compatible endpoint
-  (llama-swap); any reasonably capable instruct model works.
+- **Default model:** `qwen3.6-35b-a3b-fp8`, served by the Nexus RTX 6000 vLLM
+  proxy; any reasonably capable instruct model works.
 
 ## Quickstart (bring your own model)
 
@@ -21,15 +21,17 @@ pip install -r requirements.txt
 uvicorn app.main:app --host 0.0.0.0 --port 8911
 ```
 
-Open <http://localhost:8911>, click **⚙ Model settings**, set your endpoint and
-model, then start dumping your idea. Defaults assume a local **Ollama** at
-`http://localhost:11434/v1` — click **Test / list models** in the panel to pull
-the list of models your endpoint exposes.
+Open <http://localhost:8911>, click **⚙ Model settings**, confirm the endpoint
+and model, then start dumping your idea. Defaults use the Nexus RTX 6000 vLLM
+proxy at `http://nexus-vllm-proxy-rtx6000/v1` with `qwen3.6-35b-a3b-fp8` — click
+**Test / list models** in the panel to pull the list of models your endpoint
+exposes.
 
 Example endpoints (set the base URL in the settings panel):
 
 | Runtime | Base URL | API key |
 |---|---|---|
+| Nexus RTX 6000 vLLM proxy (default) | `http://nexus-vllm-proxy-rtx6000/v1` | — |
 | Ollama | `http://localhost:11434/v1` | — |
 | LM Studio | `http://localhost:1234/v1` | — |
 | llama.cpp `llama-server` | `http://localhost:8080/v1` | — |
