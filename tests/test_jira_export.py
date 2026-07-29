@@ -130,6 +130,18 @@ def _final_session():
     return s
 
 
+def test_final_page_places_atlassian_login_in_fixed_action_bar(monkeypatch):
+    monkeypatch.setattr(config, "ATLASSIAN_OAUTH_CLIENT_ID", "test-atl-id")
+    s = _final_session()
+    resp = TestClient(main.app).get(f"/sessions/{s.id}")
+
+    assert resp.status_code == 200
+    action_bar = resp.text.split('<div class="action-bar">', 1)[1].split("</div>", 1)[0]
+    assert "Sign in with Atlassian" in action_bar
+    jira_export = resp.text.split('<div id="jira-export"', 1)[1]
+    assert "Sign in with Atlassian" not in jira_export
+
+
 def test_projects_route_unauthenticated_returns_401(monkeypatch):
     monkeypatch.setattr(config, "ATLASSIAN_OAUTH_CLIENT_ID", "test-atl-id")
     c = TestClient(main.app)  # no auth cookie
