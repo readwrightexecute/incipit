@@ -1,6 +1,6 @@
 # promptgen — BMAD-style mega-prompt wizard backed by DiffusionGemma via llama.cpp PR #24423
 #
-# Build:
+# Build (from this directory — the build context is webapp/):
 #   podman build -t localhost/promptgen:v3 .
 # Import into containerd (kubelet's namespace):
 #   podman save --format oci-archive -o /tmp/promptgen.tar localhost/promptgen:v1

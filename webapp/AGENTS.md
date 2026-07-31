@@ -1,6 +1,8 @@
-# CLAUDE.md
+# AGENTS.md — web app
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for an agent working on the Incipit web app. Everything here is scoped to
+`webapp/`; run all commands from this directory. For the repo as a whole and for
+the agent skills, see [`../AGENTS.md`](../AGENTS.md).
 
 ## What this is
 
@@ -22,8 +24,16 @@ design — trusted LAN / localhost only.
 
 ## Run & develop
 
-There is no test suite, linter, or build step for the Python app. The fast dev
-loop avoids spawning the GPU model by pointing at an OpenAI-compatible endpoint:
+There is no linter or build step. Tests are offline — no network, no LLM, no
+subprocess:
+
+```bash
+pip install -r requirements-dev.txt
+pytest
+```
+
+The fast dev loop avoids spawning the GPU model by pointing at an
+OpenAI-compatible endpoint:
 
 ```bash
 PROMPTGEN_BACKEND=openai \
@@ -32,15 +42,17 @@ PROMPTGEN_OPENAI_API_KEY=<key> \
 python3 -m uvicorn app.main:app --port 8911
 ```
 
-All configuration is environment variables (`PROMPTGEN_*`) read in
-`app/config.py` — there is no config file. Container CMD runs uvicorn on
-`:8000`.
+Configuration is environment variables (`PROMPTGEN_*`) read in `app/config.py`.
+Those seed the runtime settings in `app/settings.py`, which the UI can override and
+persists to `.promptgen.json` (gitignored, CWD-relative). Container CMD runs
+uvicorn on `:8000`.
 
 ### Container build / deploy
 
-`podman build` → `podman save` (oci-archive) → `sudo ctr -n k8s.io images
-import` → `kubectl apply -f ~/homelab-gitops/apps/aistack/promptgen.yaml`
-(`imagePullPolicy: Never`). See README for exact commands. The Containerfile
+`podman build` (from `webapp/`, which is the build context) → `podman save`
+(oci-archive) → `sudo ctr -n k8s.io images import` → `kubectl apply -f
+~/homelab-gitops/apps/aistack/promptgen.yaml` (`imagePullPolicy: Never`). See
+`README.md` for exact commands. The Containerfile
 compiles `llama-diffusion-cli` from a **pinned** llama.cpp PR SHA (`PR_SHA`
 build arg) for Blackwell (sm_120, `CMAKE_CUDA_ARCHITECTURES=120`) and applies
 two carried patches (below). Re-pin the SHA deliberately; never build from the
@@ -88,6 +100,15 @@ refresh / shared links resume a session (handlers set `HX-Push-Url`).
 To change what the spec contains, edit the YAML — not the code. Prompt wording
 lives in `app/wizard/prompts/*.md.j2`; the system prompt is loaded once at
 import (`flow.SYSTEM`).
+
+### Relationship to `../skills/`
+
+`../skills/` holds the **authoritative** definition of the Incipit flow as portable
+agent skills (see `../skills/README.md`). The `app/wizard/*.yaml` files above are
+this web app's own copies of the section schema and refine menu; the two are
+deliberately forked and nothing syncs them. A change to the *flow itself* belongs
+in `../skills/src/`. Keep this app self-contained: never import from `../skills/`,
+and never make the skills depend on this app.
 
 ### Backends (`PROMPTGEN_BACKEND`)
 
