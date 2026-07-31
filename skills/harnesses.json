@@ -1,0 +1,65 @@
+{
+  "_comment": "Adapter manifest. skills/src is the single source of truth; each harness below only changes the frontmatter and the on-disk layout. Adding a harness is a new entry here plus `python3 skills/build.py`.",
+  "skills": ["incipit", "incipit-clarify", "incipit-review"],
+  "harnesses": [
+    {
+      "id": "claude",
+      "label": "Claude Code",
+      "format": "skill_dir",
+      "layout": "{skill}",
+      "install_hint": "~/.claude/skills/{skill}  (or .claude/skills/{skill} per project)",
+      "frontmatter": {}
+    },
+    {
+      "id": "cursor",
+      "label": "Cursor",
+      "format": "skill_dir",
+      "layout": "{skill}",
+      "install_hint": "~/.cursor/skills/{skill}  (or .cursor/skills/{skill} per project)",
+      "frontmatter": {}
+    },
+    {
+      "id": "codex",
+      "label": "Codex",
+      "format": "skill_dir",
+      "layout": "{skill}",
+      "install_hint": "~/.codex/skills/{skill}",
+      "frontmatter": {}
+    },
+    {
+      "id": "openclaw",
+      "label": "OpenClaw",
+      "format": "skill_dir",
+      "layout": "{skill}",
+      "install_hint": "~/.openclaw/skills/{skill}",
+      "frontmatter": {}
+    },
+    {
+      "id": "hermes",
+      "label": "Hermes Agent",
+      "format": "skill_dir",
+      "layout": "software-development/{skill}",
+      "install_hint": "~/.hermes/skills/software-development/{skill}",
+      "frontmatter": {
+        "version": "1.0.0",
+        "author": "Incipit",
+        "license": "MIT",
+        "platforms": ["linux", "macos", "windows"],
+        "metadata": {
+          "hermes": {
+            "tags": ["spec", "prompt-engineering", "requirements", "planning", "bmad"],
+            "related_skills": ["incipit", "incipit-clarify", "incipit-review"]
+          }
+        }
+      }
+    },
+    {
+      "id": "agents",
+      "label": "AGENTS.md fallback",
+      "format": "agents_md",
+      "output": "AGENTS.md",
+      "install_hint": "copy into your project root as AGENTS.md",
+      "preamble": "Instruction-only fallback for hosts that read `AGENTS.md` but do not support invocable skills. It inlines all three Incipit skills; a skill-capable host should install the real skills instead."
+    }
+  ]
+}

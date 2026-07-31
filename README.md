@@ -1,135 +1,125 @@
 # Incipit
 
-*"here begins"* — a BMAD-style **mega-prompt wizard**. It takes a rough software
-idea through a compressed elicitation flow and assembles one structured spec (a
-"mega-prompt") you paste into a coding agent. Instead of hoping you remembered to
-specify everything, Incipit interrogates the idea for you, QA's the result, and
-helps you converge it before you ship it to the agent.
+*"here begins"* — turn a rough idea into a structured **Implementation Brief**
+before any work starts. Instead of hoping you remembered to specify everything,
+Incipit interrogates the idea for you: it researches what already exists, infers the
+stakes and form factor, asks only the questions research couldn't answer, drafts the
+spec a section at a time, breaks it into ordered tasks, and verifies the result with
+a script before handing it over.
 
-- **Bring your own model.** Talks to any OpenAI-compatible `/v1` endpoint —
-  Ollama, LM Studio, llama.cpp `llama-server`, vLLM, or OpenAI itself.
-- **UI:** FastAPI + HTMX, server-rendered, no build step. Set your endpoint and
-  model from the in-app **⚙ Model settings** panel (or via env).
-- **Tested with** `qwen3.6:35b` served over an OpenAI-compatible endpoint
-  (llama-swap); any reasonably capable instruct model works.
+You get files an agent can execute against — `brief.md`, plus `research.md` and
+`tasks.md` once the stakes justify them — rather than a wall of chat to copy out.
+Findings carry sources and dates, and the brief cites them, so a version number or a
+rate limit in the spec is evidence rather than recall. It defaults to software, but
+the section schema is swappable, so the same flow works for a process, a policy, or a
+research plan.
 
-## Quickstart (bring your own model)
+```
+skills/    portable agent skills — the flow, for any coding agent   (start here)
+webapp/    a local FastAPI + HTMX wizard driving your own model endpoint
+```
+
+## Agent skills
+
+Three skills that any skill-capable agent can run — Claude Code, Cursor, Codex,
+OpenClaw, Hermes, and anything that reads `AGENTS.md`. No server, no model
+endpoint, no dependencies; the agent runs the flow itself in the conversation.
+
+| Skill | What it does |
+|---|---|
+| `incipit` | Full flow: research → calibrate → clarify → draft → write the three files → verify |
+| `incipit-clarify` | Just the decision-changing questions, each with an `[ASSUMPTION]` default |
+| `incipit-review` | Audit an existing spec, PRD, or brief for gaps, risks, and scope creep |
+
+### Install
+
+The easiest path is to let your agent do it. From a checkout, ask it:
+
+> Install the Incipit skills for this agent, following AGENTS.md.
+
+[`AGENTS.md`](AGENTS.md) gives it the host-to-path table, the build check, and the
+verification step.
+
+To do it yourself, copy or symlink the adapter for your host out of
+`skills/dist/`:
 
 ```bash
-git clone <this-repo> promptgen && cd promptgen
+# Cursor, globally — swap `cursor` for claude / codex / openclaw
+mkdir -p ~/.cursor/skills
+for s in incipit incipit-clarify incipit-review; do
+  ln -sfn "$PWD/skills/dist/cursor/$s" ~/.cursor/skills/"$s"
+done
+```
+
+| Host | Install to |
+|---|---|
+| Claude Code | `~/.claude/skills/<skill>` or `.claude/skills/<skill>` per project |
+| Cursor | `~/.cursor/skills/<skill>` or `.cursor/skills/<skill>` per project |
+| Codex | `~/.codex/skills/<skill>` |
+| OpenClaw | `~/.openclaw/skills/<skill>` |
+| Hermes Agent | `~/.hermes/skills/software-development/<skill>` |
+| Anything reading `AGENTS.md` | copy `skills/dist/agents/AGENTS.md` to your project root |
+
+Most hosts need a new session to discover the skills. Full details, including
+per-host cautions and uninstall, are in [`skills/README.md`](skills/README.md).
+
+### Use
+
+Say "spec this out with incipit" and describe your idea. It infers the stakes and
+form factor, researches prior art and what's already been tried, asks the handful of
+questions research couldn't settle (each with a default you can ignore), drafts the
+sections one at a time, and writes the artifacts under `docs/specs/<slug>/`. For a
+hands-off run, say "shoot the moon". Point it at a repo and it reads the real stack,
+the tracker, and the git history first, so the constraints match what you already
+have.
+
+A weekend script gets one file; a production service gets three with full
+requirement traceability. The stakes it infers decide, so the ceremony matches what
+you're actually building.
+
+If research finds something that already does the job, you get told that instead of
+a brief for a redundant build.
+
+Nothing is handed over until `scripts/brief_check.py` passes, which verifies
+structure, requirement syntax, citation format, requirement-to-criterion coverage,
+and task ordering — the checks an agent is least reliable at doing by rereading its
+own output.
+
+`skills/` is the authoritative definition of the flow and is standalone — standard
+library only, no dependency on the web app.
+
+## Web app
+
+A local wizard that runs the same flow against any OpenAI-compatible endpoint
+(Ollama, LM Studio, llama.cpp, vLLM, OpenAI), with SSE progress and a downloadable
+brief. It is fully self-contained under `webapp/`.
+
+```bash
+cd webapp
 pip install -r requirements.txt
 uvicorn app.main:app --host 0.0.0.0 --port 8911
 ```
 
-Open <http://localhost:8911>, click **⚙ Model settings**, set your endpoint and
-model, then start dumping your idea. Defaults assume a local **Ollama** at
-`http://localhost:11434/v1` — click **Test / list models** in the panel to pull
-the list of models your endpoint exposes.
+See [`webapp/README.md`](webapp/README.md) for configuration, the round-table
+review, and the optional GPU DiffusionGemma backend.
 
-Example endpoints (set the base URL in the settings panel):
+## Repo layout
 
-| Runtime | Base URL | API key |
-|---|---|---|
-| Ollama | `http://localhost:11434/v1` | — |
-| LM Studio | `http://localhost:1234/v1` | — |
-| llama.cpp `llama-server` | `http://localhost:8080/v1` | — |
-| llama-swap (tested: `qwen3.6:35b`) | `http://<host>:<port>/v1` | bearer |
-| OpenAI | `https://api.openai.com/v1` | required |
+| Path | What |
+|---|---|
+| `skills/src/` | canonical skill sources — edit here |
+| `skills/dist/` | generated per-harness adapters — do not edit |
+| `skills/build.py` | regenerates `dist/`; `--check` fails when stale |
+| `webapp/` | the FastAPI app, its tests, container build, and docs |
+| `AGENTS.md` | instructions for agents working in this repo |
 
-Runtime endpoint changes are restricted to localhost, `api.openai.com`, and the
-host from `PROMPTGEN_OPENAI_BASE_URL` by default. For another trusted host, set
-`PROMPTGEN_ALLOWED_BASE_URL_HOSTS=host.example.com` before starting the app.
-
-> **"Disable thinking" toggle:** local reasoning models (Qwen, etc.) can burn the
-> whole token budget on a hidden think channel and return empty content. Turning
-> this on sends `chat_template_kwargs.enable_thinking=false`. Leave it **off** for
-> OpenAI and most hosted APIs — they reject the parameter.
-
-## The flow
-
-The wizard is fully async — each step kicks off a background generation and
-streams progress over SSE while you keep interacting. The final mega-prompt is
-assembled **deterministically** (string concat, no LLM call) and is downloadable
-as Markdown.
-
-1. **Brain dump** — describe what you want to build and why. Pick only whether
-   it's a **new** project or an **existing** codebase (paste a repo link and
-   Incipit folds the README + structure into drafting). The **form factor /
-   platform is inferred from your idea**, not asked — so a stale dropdown choice
-   can't contradict the spec.
-2. **Clarify** — the model asks the handful of questions that actually matter,
-   each with an `[ASSUMPTION]` default. Answer what you care about; blanks fall
-   back to the assumption.
-3. **Draft** — six spec sections are drafted sequentially (each sees the prior
-   done sections):
-   1. Goals & Background
-   2. Functional Requirements
-   3. Non-Functional Requirements
-   4. Tech Constraints & Stack
-   5. Acceptance Criteria
-   6. Out of Scope
-
-   Click any section to hand-edit it, or use the per-section **Refine** menu to
-   have the model redo it (critique, identify risks, expand, simplify).
-4. **🎉 Party review** *(optional)* — convene a BMAD-style round table of personas
-   + a facilitator that debate the spec (or, at step 2, your clarifying
-   questions) to consensus and propose changes you approve or deny.
-5. **Finish** — copy or download the assembled mega-prompt.
-
-> An automated QA / fix / verify pass is being reworked on the `qa-flow` branch
-> and is intentionally not part of this flow right now.
-
-**🌙 Shoot the Moon** runs the whole thing hands-off from just the idea: it
-infers the platform and details, takes the generated assumptions as answers,
-drafts the full spec, convenes the round table, and applies the consensus
-automatically. You can still edit and refine afterward.
-
-To change *what* the spec contains, edit `app/wizard/sections.yaml` (section list
-+ order); the per-section refine menu is `app/wizard/elicitation.yaml`; prompt
-wording lives in `app/wizard/prompts/*.md.j2`.
-
-## Configuration
-
-All config is environment variables (`PROMPTGEN_*`) — see [`.env.example`](.env.example).
-A local `.env` is auto-loaded if present. Anything you save in the **⚙ Model
-settings** panel is written to `.promptgen.json` (gitignored) and takes precedence
-on the next run, so you configure your endpoint once.
-
-There is **no authentication** — run it on localhost or a trusted network only.
-
-There's no test suite or build step for the app itself. For a fast dev loop,
-point it at any running endpoint and run `uvicorn` as above.
-
----
-
-## Advanced: DiffusionGemma backend (GPU)
-
-Incipit was originally built around **DiffusionGemma 26B-A4B-it** run through
-`llama-diffusion-cli` (llama.cpp PR #24423, which has no HTTP server yet — the
-app drives a persistent `-cnv` subprocess over stdin/stdout). This path requires
-building llama.cpp from a pinned PR and a GPU, and is selected with
-`PROMPTGEN_BACKEND=diffusion-cnv` (or `diffusion-oneshot`). It is **not** needed
-for the OpenAI-compatible path above.
+The two halves are independent and verify separately:
 
 ```bash
-# model (one-time, ~16G):
-hf download unsloth/diffusiongemma-26B-A4B-it-GGUF diffusiongemma-26B-A4B-it-Q4_K_M.gguf \
-  --local-dir /path/to/models/diffusiongemma-26B-A4B-it-GGUF
-
-# build the image (compiles llama-diffusion-cli from the pinned PR; CUDA, sm_120):
-podman build -t localhost/promptgen:v3 .
+cd skills && pytest    # 22 tests, standard library only
+cd webapp && pytest    # 118 tests, offline
 ```
 
-Backends (`PROMPTGEN_BACKEND`):
+## License
 
-| Value | What |
-|---|---|
-| `openai` (default) | any OpenAI-compatible endpoint |
-| `diffusion-cnv` | persistent `llama-diffusion-cli -cnv` subprocess |
-| `diffusion-oneshot` | one CLI process per call (model reload each call) |
-
-See `docs/multi-gpu-diffusiongemma.md` for the multi-GPU writeup, and the
-`Containerfile` header / `patches/` for the pinned-PR build and carried patches.
-The diffusion CLI protocol the `-cnv` backend depends on (turn marker, one line
-per turn, `/clear` between calls) is documented in `app/llm/diffusion_cnv.py`;
-re-pin the PR SHA deliberately.
+MIT — see [`LICENSE`](LICENSE).
