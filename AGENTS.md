@@ -127,7 +127,7 @@ Edit `skills/src/` — never `skills/dist/`, which is generated and overwritten.
 ```bash
 python3 skills/build.py          # regenerate dist/
 python3 skills/build.py --check  # fail if dist/ is stale
-cd skills && pytest              # 71 tests, standalone
+cd skills && pytest              # 107 tests, standalone
 ```
 
 Rules that the tests enforce, so you will find out if you break them:
@@ -179,6 +179,6 @@ is deliberately forked from the skills and nothing syncs the two. A change to th
 There is no repo-wide test command by design — each half stands alone.
 
 ```bash
-cd skills && pytest                                     # 71 tests, stdlib only
+cd skills && pytest                                     # 107 tests, stdlib only
 cd webapp && pip install -r requirements-dev.txt && pytest   # 118 tests, offline
 ```
