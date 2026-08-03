@@ -35,7 +35,7 @@
       </small>
       <div id="gh-repos"
            hx-get="/api/github/repos{% if repo_selection_sid %}?sid={{ repo_selection_sid }}{% endif %}"
-           hx-trigger="load" hx-swap="innerHTML">
+           hx-trigger="load" hx-target="this" hx-swap="innerHTML">
         <small class="assumption"><span class="spinner" data-anim="pulse"></span> Loading your repositories…</small>
       </div>
       {% else %}

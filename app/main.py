@@ -295,7 +295,9 @@ async def resume(request: Request, sid: str):
         return _render("resume.html", request, body="step_moonshot.html", s=s)
     if s.phase == "final":
         return _render("step6_final.html", request, s=s,
-                       mega_prompt=flow.assemble_final(s), **_atlassian_ctx(request))
+                       mega_prompt=flow.assemble_final(s),
+                       atlassian_error=request.query_params.get("atlassian_error", ""),
+                       **_atlassian_ctx(request))
     return _render("step1_idea.html", request, **_calibration_ctx(),
                    **_github_ctx(request))
 
@@ -745,6 +747,17 @@ def _safe_return_to(value: str | None) -> str:
     return "/"
 
 
+def _atlassian_error_redirect(return_to: str, message: str) -> RedirectResponse:
+    """Return OAuth failures to the originating page instead of stranding users
+    on the callback endpoint. `message` is application-defined, never upstream
+    response content."""
+    separator = "&" if "?" in return_to else "?"
+    return RedirectResponse(
+        f"{return_to}{separator}{urlencode({'atlassian_error': message})}",
+        status_code=302,
+    )
+
+
 @app.get("/auth/github/login")
 async def github_login(request: Request, return_to: str = "/"):
     if not _github_oauth_configured():
@@ -923,8 +936,7 @@ async def atlassian_callback(request: Request, code: str = "", state: str = "",
         return PlainTextResponse("Invalid or expired OAuth state.", status_code=400)
     return_to = _safe_return_to(payload.get("return_to"))
     if error or not code:
-        # User denied, or Atlassian returned an error — back to where they were.
-        return RedirectResponse(return_to, status_code=302)
+        return _atlassian_error_redirect(return_to, "Atlassian sign-in was cancelled or denied.")
 
     try:
         async with httpx.AsyncClient(timeout=config.REPO_TIMEOUT) as c:
@@ -938,8 +950,9 @@ async def atlassian_callback(request: Request, code: str = "", state: str = "",
             token_data = tok.json() if tok.status_code == 200 else {}
             access_token = token_data.get("access_token", "")
             if not access_token:
-                return PlainTextResponse("Atlassian did not return an access token.",
-                                         status_code=400)
+                return _atlassian_error_redirect(
+                    return_to, "Atlassian could not complete the token exchange."
+                )
             # Resolve the user's accessible Jira site(s) → cloudId + site URL.
             rr = await c.get(ATLASSIAN_RESOURCES_URL, headers={
                 "Accept": "application/json",
@@ -948,17 +961,18 @@ async def atlassian_callback(request: Request, code: str = "", state: str = "",
             resources = rr.json() if rr.status_code == 200 else []
     except (httpx.HTTPError, ValueError) as e:
         log.warning("Atlassian OAuth callback failed: %s", e)
-        return PlainTextResponse(
-            "Atlassian authentication could not be completed. Please try again.",
-            status_code=502)
+        return _atlassian_error_redirect(
+            return_to, "Atlassian could not complete the sign-in request."
+        )
 
     valid_resources = [
         item for item in resources
         if isinstance(item, dict) and item.get("id") and item.get("url")
     ] if isinstance(resources, list) else []
     if not valid_resources:
-        return PlainTextResponse(
-            "Atlassian returned no accessible Jira sites.", status_code=400)
+        return _atlassian_error_redirect(
+            return_to, "No accessible Jira site was returned by Atlassian."
+        )
     first = valid_resources[0]
     meta = {
         "cloud_id": first.get("id", ""),

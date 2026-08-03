@@ -155,11 +155,14 @@ def test_callback_rejects_empty_accessible_resources(client):
             "access_token": "t", "refresh_token": "r", "expires_in": 3600}))
     respx.get(main.ATLASSIAN_RESOURCES_URL).mock(
         return_value=httpx.Response(200, json=[]))
-    _, state = _start_login(client)
+    _, state = _start_login(client, return_to="/sessions/xyz")
     resp = client.get(
         f"/auth/atlassian/callback?code=abc&state={state}",
         follow_redirects=False)
-    assert resp.status_code == 400
+    assert resp.status_code == 302
+    assert resp.headers["location"] == (
+        "/sessions/xyz?atlassian_error=No+accessible+Jira+site+was+returned+by+Atlassian."
+    )
     assert auth.get_auth(_sid_from_jar(client)).provider("atlassian") is None
 
 
@@ -181,7 +184,40 @@ def test_callback_with_error_param_redirects_back(client):
     resp = client.get(f"/auth/atlassian/callback?error=access_denied&state={state}",
                       follow_redirects=False)
     assert resp.status_code == 302
-    assert resp.headers["location"] == "/sessions/zzz"
+    assert resp.headers["location"] == (
+        "/sessions/zzz?atlassian_error=Atlassian+sign-in+was+cancelled+or+denied."
+    )
+
+
+@respx.mock
+def test_callback_token_failure_returns_to_origin_with_retry_message(client):
+    respx.post(main.ATLASSIAN_TOKEN_URL).mock(
+        return_value=httpx.Response(400, json={"error": "invalid_grant"}))
+    _, state = _start_login(client, return_to="/sessions/xyz")
+
+    resp = client.get(f"/auth/atlassian/callback?code=expired&state={state}",
+                      follow_redirects=False)
+
+    assert resp.status_code == 302
+    assert resp.headers["location"] == (
+        "/sessions/xyz?atlassian_error=Atlassian+could+not+complete+the+token+exchange."
+    )
+
+
+@respx.mock
+def test_callback_without_accessible_site_returns_to_origin_with_retry_message(client):
+    respx.post(main.ATLASSIAN_TOKEN_URL).mock(
+        return_value=httpx.Response(200, json={"access_token": "token"}))
+    respx.get(main.ATLASSIAN_RESOURCES_URL).mock(return_value=httpx.Response(200, json=[]))
+    _, state = _start_login(client, return_to="/sessions/xyz")
+
+    resp = client.get(f"/auth/atlassian/callback?code=abc&state={state}",
+                      follow_redirects=False)
+
+    assert resp.status_code == 302
+    assert resp.headers["location"] == (
+        "/sessions/xyz?atlassian_error=No+accessible+Jira+site+was+returned+by+Atlassian."
+    )
 
 
 @respx.mock
