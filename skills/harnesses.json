@@ -1,6 +1,10 @@
 {
-  "_comment": "Adapter manifest. skills/src is the single source of truth; each harness below only changes the frontmatter and the on-disk layout. Adding a harness is a new entry here plus `python3 skills/build.py`.",
+  "_comment": "Adapter manifest. skills/src is the single source of truth; each harness below only changes the frontmatter and the on-disk layout. Adding a harness is a new entry here plus `python3 skills/build.py`. shared_files bundles another skill's files into a skill that references them, so each installed skill is self-contained; the target path drops the owning skill's directory.",
   "skills": ["incipit", "incipit-clarify", "incipit-review"],
+  "shared_files": {
+    "incipit-review": ["incipit/scripts/brief_check.py", "incipit/scripts/repo_context.py"],
+    "incipit-clarify": ["incipit/scripts/repo_context.py"]
+  },
   "harnesses": [
     {
       "id": "claude",
@@ -59,7 +63,7 @@
       "format": "agents_md",
       "output": "AGENTS.md",
       "install_hint": "copy into your project root as AGENTS.md",
-      "preamble": "Instruction-only fallback for hosts that read `AGENTS.md` but do not support invocable skills. It inlines all three Incipit skills; a skill-capable host should install the real skills instead."
+      "preamble": "Instruction-only fallback for hosts that read `AGENTS.md` but do not support invocable skills. It inlines all three Incipit skills; a skill-capable host should install the real skills instead. The helper scripts (`scripts/brief_check.py`, `scripts/repo_context.py`) are not inlined here: fetch them from the incipit repository, or perform the checks they automate by hand."
     }
   ]
 }

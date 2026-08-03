@@ -217,6 +217,16 @@ def build() -> dict[str, str]:
                 rel = extra.relative_to(skill_dir).as_posix()
                 tree[f"{base}/{rel}"] = extra.read_text(encoding="utf-8")
 
+            # Files owned by another skill that this one's body tells the agent
+            # to run. Bundling them keeps every installed skill self-contained,
+            # including when a user installs a subset.
+            for shared in manifest.get("shared_files", {}).get(skill, []):
+                source = SRC / shared
+                if not source.is_file():
+                    raise SystemExit(f"error: shared file missing: src/{shared}")
+                rel = Path(shared).relative_to(Path(shared).parts[0]).as_posix()
+                tree[f"{base}/{rel}"] = source.read_text(encoding="utf-8")
+
     return tree
 
 

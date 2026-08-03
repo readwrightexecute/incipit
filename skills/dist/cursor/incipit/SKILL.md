@@ -226,6 +226,10 @@ python3 scripts/brief_check.py docs/specs/<slug>/brief.md \
   --tasks docs/specs/<slug>/tasks.md --research docs/specs/<slug>/research.md
 ```
 
+`scripts/brief_check.py` resolves against this skill's directory; the
+`docs/specs/` paths resolve against the project root. Qualify whichever side
+your working directory doesn't cover.
+
 At `serious` stakes add `--verify-sources`, which fetches every cited URL and fails
 on the dead ones. It needs network access and takes a few seconds, which is why it
 is opt-in rather than always on.

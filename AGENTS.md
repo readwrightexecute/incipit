@@ -137,6 +137,8 @@ Rules that the tests enforce, so you will find out if you break them:
 - Skill bodies must be identical across harnesses. Only frontmatter and layout may
   differ, and both come from `skills/harnesses.json`.
 - Every `reference/` link must resolve to a real file.
+- Every `scripts/*.py` a skill body tells the agent to run ships inside that
+  skill's own directory (see `shared_files` in `skills/harnesses.json`).
 - `skills/dist` must match `skills/src`.
 - Every skill has trigger-eval prompts in `skills/eval/triggers.json` and a
   `Do not use` clause in its description.

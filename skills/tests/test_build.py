@@ -67,6 +67,22 @@ def test_skill_body_stays_under_500_lines(skill):
     assert len(body.splitlines()) < 500
 
 
+def test_referenced_scripts_ship_with_each_skill():
+    """A skill whose body says to run scripts/<x>.py must ship that script in its
+    own directory — hosts resolve relative paths against the invoked skill, and
+    the install docs permit installing a subset."""
+    tree = build_mod.build()
+    for path, content in tree.items():
+        if not path.endswith("/SKILL.md"):
+            continue
+        base = path.rsplit("/SKILL.md", 1)[0]
+        for script in set(build_mod.re.findall(r"\bscripts/[\w.-]+\.py\b", content)):
+            assert f"{base}/{script}" in tree, (
+                f"{path} references {script} but does not ship it; add it to "
+                "shared_files in harnesses.json"
+            )
+
+
 def test_relative_links_resolve_to_real_files():
     """A reference link that 404s is a silently broken skill."""
     for skill in MANIFEST["skills"]:

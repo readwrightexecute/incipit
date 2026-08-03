@@ -1,6 +1,6 @@
 # Incipit
 
-Instruction-only fallback for hosts that read `AGENTS.md` but do not support invocable skills. It inlines all three Incipit skills; a skill-capable host should install the real skills instead.
+Instruction-only fallback for hosts that read `AGENTS.md` but do not support invocable skills. It inlines all three Incipit skills; a skill-capable host should install the real skills instead. The helper scripts (`scripts/brief_check.py`, `scripts/repo_context.py`) are not inlined here: fetch them from the incipit repository, or perform the checks they automate by hand.
 
 ## Incipit — implementation brief wizard
 
@@ -224,6 +224,10 @@ python3 scripts/brief_check.py docs/specs/<slug>/brief.md \
   --tasks docs/specs/<slug>/tasks.md --research docs/specs/<slug>/research.md
 ```
 
+`scripts/brief_check.py` resolves against this skill's directory; the
+`docs/specs/` paths resolve against the project root. Qualify whichever side
+your working directory doesn't cover.
+
 At `serious` stakes add `--verify-sources`, which fetches every cited URL and fails
 on the dead ones. It needs network access and takes a few seconds, which is why it
 is opt-in rather than always on.
@@ -334,8 +338,8 @@ list, spend a little effort finding out:
 
 - **In the repo or the tracker.** Half-built versions and previously rejected
   proposals are common, and a closed ticket explaining why something was dropped is
-  worth more than any question you could ask. `incipit` ships
-  `scripts/repo_context.py` for a fast codebase summary.
+  worth more than any question you could ask. This skill bundles
+  `scripts/repo_context.py` (in this skill's directory) for a fast codebase summary.
 - **On the web, if the idea might already be solved.** One or two searches. If a
   tool already does this, tell the user that instead of interrogating them about
   building it — that is the single most useful answer you can give here.
@@ -416,8 +420,8 @@ against your own recall, which has the same cutoff the author's did:
 
 - **The codebase.** If the spec targets existing code, read enough of it to know
   whether the spec's claims hold — a spec that contradicts the repo is the most
-  expensive kind of wrong. `incipit` ships `scripts/repo_context.py` for a fast
-  summary.
+  expensive kind of wrong. This skill bundles `scripts/repo_context.py` (in this
+  skill's directory) for a fast summary.
 - **The web, for anything versioned or externally owned.** Every named library
   version, API limit, quota, price, licence, and regulation is a factual claim with
   an expiry date. Spot-check the load-bearing ones. A confidently stated stale
@@ -436,6 +440,9 @@ judgment on them:
 python3 scripts/brief_check.py <path to brief.md> \
   [--tasks <path to tasks.md>] [--research <path to research.md>]
 ```
+
+`scripts/brief_check.py` is bundled with this skill and resolves against this
+skill's directory; the document paths resolve against the project.
 
 Everything it reports is a real finding. Fold its output into your report rather
 than repeating the same checks by eye, and spend your own attention on what a

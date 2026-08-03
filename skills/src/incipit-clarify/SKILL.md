@@ -50,8 +50,8 @@ list, spend a little effort finding out:
 
 - **In the repo or the tracker.** Half-built versions and previously rejected
   proposals are common, and a closed ticket explaining why something was dropped is
-  worth more than any question you could ask. `incipit` ships
-  `scripts/repo_context.py` for a fast codebase summary.
+  worth more than any question you could ask. This skill bundles
+  `scripts/repo_context.py` (in this skill's directory) for a fast codebase summary.
 - **On the web, if the idea might already be solved.** One or two searches. If a
   tool already does this, tell the user that instead of interrogating them about
   building it — that is the single most useful answer you can give here.
