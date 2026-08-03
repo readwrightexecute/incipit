@@ -8,7 +8,6 @@ __pycache__/
 .coverage
 .coverage.*
 htmlcov/
-.opencodereview/last-review.txt
-# Claude Code authoring tooling — general skill, not part of the app. Kept on
+# Claude Code authoring tooling — general skill, not part of this repo. Kept on
 # disk (so it still works locally) but not tracked; it dominated every diff.
 .claude/skills/

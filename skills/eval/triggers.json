@@ -1,0 +1,142 @@
+{
+  "_comment": [
+    "Trigger evaluation set. A skill that never fires is almost always a",
+    "description problem, and the only way to know is to test phrasings the",
+    "description was not written against.",
+    "",
+    "For each skill: should_trigger prompts must load it, and near_miss prompts",
+    "must not. Near misses share vocabulary with the skill but need something",
+    "else — they are what catch an over-broad description.",
+    "",
+    "Run these by hand against a host after changing any description, then check",
+    "the transcript for the skill actually loading. skills/tests/test_eval.py",
+    "only validates that this file stays well-formed and covered."
+  ],
+
+  "incipit": {
+    "should_trigger": [
+      "spec this out: a tool that watches a folder and uploads new files to S3",
+      "turn this into an implementation brief before I start coding",
+      "I want a mega-prompt I can hand to Claude for this idea",
+      "write me a proper spec for a habit tracker, then break it into tasks",
+      "run incipit on this: internal dashboard for our support queue",
+      "I have a rough idea for an onboarding process and want it specced properly",
+      "shoot the moon on this idea and give me the whole brief",
+      "research this and plan it out for me",
+      "check whether this already exists, and if not spec it out"
+    ],
+    "near_miss": [
+      {
+        "prompt": "review this spec and tell me if it's ready to build",
+        "expected": "incipit-review",
+        "why": "a document already exists; this is an audit, not an elicitation"
+      },
+      {
+        "prompt": "what am I missing in this idea?",
+        "expected": "incipit-clarify",
+        "why": "wants the open questions only, not a specification document"
+      },
+      {
+        "prompt": "add a --verbose flag to the CLI",
+        "expected": null,
+        "why": "a small well-defined change; a brief would be pure overhead"
+      },
+      {
+        "prompt": "implement the plan we agreed on earlier",
+        "expected": null,
+        "why": "already specced; this is execution"
+      },
+      {
+        "prompt": "explain how the wizard flow in this repo works",
+        "expected": null,
+        "why": "a question about existing code, not a new idea to specify"
+      },
+      {
+        "prompt": "write the README for this project",
+        "expected": null,
+        "why": "documentation of what exists, not a specification of what to build"
+      },
+      {
+        "prompt": "what are the best Postgres connection poolers?",
+        "expected": null,
+        "why": "research with no idea behind it; answer directly rather than spec anything"
+      }
+    ]
+  },
+
+  "incipit-clarify": {
+    "should_trigger": [
+      "what am I missing in this idea?",
+      "what should I decide first before building this?",
+      "what do you need to know to build this?",
+      "stress-test this idea for me",
+      "I'm about to write the ticket myself — what are the open questions?",
+      "poke holes in this plan before I commit to it"
+    ],
+    "near_miss": [
+      {
+        "prompt": "write me a proper spec for a habit tracker, then break it into tasks",
+        "expected": "incipit",
+        "why": "wants the finished document, not just the questions"
+      },
+      {
+        "prompt": "what's wrong with this design doc?",
+        "expected": "incipit-review",
+        "why": "a document exists; this is a critique"
+      },
+      {
+        "prompt": "what questions should I ask in this candidate interview?",
+        "expected": null,
+        "why": "questions, but not decision-changing questions about a thing to build"
+      },
+      {
+        "prompt": "what's missing from this test suite?",
+        "expected": null,
+        "why": "a coverage gap in existing code, not an under-specified idea"
+      },
+      {
+        "prompt": "ask me some questions about my day",
+        "expected": null,
+        "why": "conversational; nothing is being planned"
+      }
+    ]
+  },
+
+  "incipit-review": {
+    "should_trigger": [
+      "review this spec and tell me if it's ready to build",
+      "audit this implementation brief before I hand it to an agent",
+      "critique this PRD",
+      "is this ticket detailed enough for someone to pick up?",
+      "what's wrong with this design doc?",
+      "de-risk this spec before I start"
+    ],
+    "near_miss": [
+      {
+        "prompt": "review this pull request",
+        "expected": null,
+        "why": "code review, not specification review"
+      },
+      {
+        "prompt": "I have a rough idea for an onboarding process and want it specced properly",
+        "expected": "incipit",
+        "why": "no document exists yet"
+      },
+      {
+        "prompt": "what am I missing in this idea?",
+        "expected": "incipit-clarify",
+        "why": "an idea, not a written spec to audit"
+      },
+      {
+        "prompt": "proofread this blog post",
+        "expected": null,
+        "why": "shares the word review but the document is not a spec"
+      },
+      {
+        "prompt": "check whether this code matches the spec",
+        "expected": null,
+        "why": "verifying an implementation, not auditing the spec itself"
+      }
+    ]
+  }
+}
