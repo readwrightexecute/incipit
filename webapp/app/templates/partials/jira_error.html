@@ -1,0 +1,12 @@
+<div class="history-modal" id="jira-error-modal">
+  <article>
+    <header><h3>Re-authorize Atlassian</h3></header>
+    <p>{{ reason }}</p>
+    <footer class="refine-row">
+      <a role="button" href="/auth/atlassian/login"
+         onclick="this.href='/auth/atlassian/login?return_to=' + encodeURIComponent(location.pathname)">Re-authorize</a>
+      <button type="button" class="secondary outline"
+              onclick="this.closest('.history-modal').remove()">Dismiss</button>
+    </footer>
+  </article>
+</div>

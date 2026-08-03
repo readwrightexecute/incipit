@@ -410,6 +410,19 @@
     .assumption { color: var(--muted-foreground); font-size: var(--fs-xs); line-height: 16px; }
     .error { color: var(--blocked); }
 
+    /* ---- GitHub private-repo multi-select (step 1, existing codebase) ---- */
+    .gh-connected { margin-top: 12px; }
+    .gh-repo-filter { margin: 6px 0; }
+    .gh-repo-list { display: flex; flex-direction: column; gap: 2px; max-height: 16rem; overflow-y: auto;
+      margin: 6px 0; padding: 6px; border: 1px solid var(--border); border-radius: 8px; }
+    .gh-repo { display: flex; align-items: baseline; gap: 8px; margin: 0; padding: 5px 8px;
+      border-radius: 8px; cursor: pointer; }
+    .gh-repo:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+    .gh-repo input { width: auto; margin: 0; flex: 0 0 auto; }
+    .gh-repo-name { font-weight: 600; }
+    .gh-repo-desc { color: var(--muted-foreground); font-size: var(--fs-xs);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
     /* ---- Refine example chips ---- */
     .refine-examples { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
     .ex-chip { font-size: var(--fs-xs); padding: 2px 10px; border: 1px solid var(--border);
@@ -479,6 +492,23 @@
     main.container { padding-bottom: 5.5rem; } /* clear the fixed action bar */
     .final-actions { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
     .final-actions button, .final-actions a[role="button"] { margin-bottom: 0; }
+
+    /* ---- Jira export (final step) ---- */
+    .jira-export { margin-top: 20px; padding: 14px 16px; border: 1px solid var(--border);
+      border-radius: 12px; background: var(--card); }
+    .jira-heading { font-size: 16px; margin: 0 0 8px; }
+    .jira-hint { color: var(--muted-foreground); font-size: var(--fs-sm); margin: 0 0 10px; }
+    .jira-chip { display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+      font-size: var(--fs-sm); margin: 0 0 10px; }
+    .jira-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--safe); flex: 0 0 auto; }
+    .jira-disconnect { margin: 0 0 0 auto; width: auto; padding: 2px 12px; font-size: var(--fs-xs); }
+    .jira-controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; }
+    .jira-controls label { font-size: var(--fs-sm); margin: 0; }
+    .jira-controls select { margin-bottom: 0; min-width: 12rem; }
+    .jira-controls .jira-go { width: auto; margin: 0; }
+    .jira-result { margin-top: 12px; font-size: var(--fs-sm); }
+    .jira-result.ok { color: var(--safe); }
+    .jira-result.error { color: var(--blocked); }
 
     /* ---- Change cards: state = full border + faint tint, no side stripe ---- */
     .change-card article { transition: border-color .15s var(--ease), background-color .15s var(--ease); }
@@ -556,6 +586,24 @@
   }
   ['htmx:sseMessage', 'htmx:afterSwap', 'htmx:afterSettle'].forEach(function (ev) {
     document.body.addEventListener(ev, scrollPartyChat);
+  });
+
+  // Client-side filter for the GitHub private-repo multi-select.
+  function filterGhRepos(input) {
+    var q = (input.value || '').trim().toLowerCase();
+    var items = document.querySelectorAll('.gh-repo');
+    for (var i = 0; i < items.length; i++) {
+      var hay = items[i].getAttribute('data-name') || '';
+      items[i].style.display = (!q || hay.indexOf(q) !== -1) ? '' : 'none';
+    }
+  }
+
+  // Let OAuth-related 401 responses swap in their re-authorization partial.
+  document.body.addEventListener('htmx:beforeSwap', function (e) {
+    if (e.detail.xhr && e.detail.xhr.status === 401) {
+      e.detail.shouldSwap = true;
+      e.detail.isError = false;
+    }
   });
 
   // Theme toggle: cycles system → dark → light, persists to localStorage, and

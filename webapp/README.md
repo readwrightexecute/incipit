@@ -41,8 +41,8 @@ Example endpoints (set the base URL in the settings panel):
 | OpenAI | `https://api.openai.com/v1` | required |
 
 Runtime endpoint changes are restricted to localhost, `api.openai.com`, and the
-host from `PROMPTGEN_OPENAI_BASE_URL` by default. For another trusted host, set
-`PROMPTGEN_ALLOWED_BASE_URL_HOSTS=host.example.com` before starting the app.
+host from `INCIPIT_OPENAI_BASE_URL` by default. For another trusted host, set
+`INCIPIT_ALLOWED_BASE_URL_HOSTS=host.example.com` before starting the app.
 
 > **Reasoning effort:** local reasoning models (Qwen, etc.) can burn the whole
 > token budget on a hidden think channel and return empty content. Setting the
@@ -87,21 +87,126 @@ from the skills — a change to the *flow itself* belongs in `../skills/src/`.
 
 ## Configuration
 
-All config is environment variables (`PROMPTGEN_*`) — see [`.env.example`](.env.example).
+All config is environment variables (`INCIPIT_*`) — see [`.env.example`](.env.example).
 A local `.env` is auto-loaded if present. Anything you save in the **⚙ Model
 settings** panel is written to `.promptgen.json` (gitignored) and takes precedence
 on the next run, so you configure your endpoint once.
 
-There is **no authentication** — run it on localhost or a trusted network only.
+The app has no login of its own — run it on localhost or a trusted network. The
+optional **"Login with GitHub"** flow (see below) is a per-user OAuth grant used
+only to read your private repos for grounding; it does not gate the app.
 
-## Tests
+### Optional: Login with GitHub (private-repo grounding)
 
-Offline: no network, no LLM, no subprocess.
+For existing-codebase specs you can sign in with GitHub so the wizard can read
+your **private** repos. The user's access token is stored **server-side only**
+(in-memory, `app/auth.py`); the browser cookie carries just a signed, opaque
+session id (`HttpOnly` + `Secure` + `SameSite=Lax`). Configure the OAuth app:
+
+| Env var | What |
+|---|---|
+| `INCIPIT_GITHUB_OAUTH_CLIENT_ID` | OAuth app client id (public; a registered default is built in) |
+| `INCIPIT_GITHUB_OAUTH_CLIENT_SECRET` | OAuth app client secret — **secret**, set via env/Doppler, never commit |
+| `INCIPIT_GITHUB_OAUTH_REDIRECT_URL` | Callback URL registered on the OAuth app (`…/auth/github/callback`) |
+| `INCIPIT_GITHUB_OAUTH_SCOPES` | Requested scopes (default `repo`) |
+| `INCIPIT_SESSION_COOKIE_SECRET` | Secret used to sign the session cookie (set it so cookies survive restarts) |
+| `INCIPIT_COOKIE_SECURE` | Set the cookie `Secure` flag (default `true`; set `false` for local plain HTTP) |
+
+Token issuance/revocation is recorded on the `promptgen.audit` logger (no
+tokens are ever logged). Leave the client id/secret blank to disable the button.
+
+### Optional: Sign in with Atlassian (Jira export)
+
+On the final step you can **"Sign in with Atlassian"** (OAuth 2.0 / 3LO) and
+push the assembled brief straight into a Jira issue: pick a **Project** +
+**Issue type**, hit **Export to Jira**, and you get back the issue key and a
+clickable link. The brief is sent as a pretty **ADF** description and the raw
+`.md` is also attached. Each user authorizes their **own** Jira site — there is
+no shared/admin token. Access **and** refresh tokens plus the resolved
+`cloudId`/site live **server-side only**; the cookie still carries just the
+opaque signed session id, and the token is auto-refreshed before it lapses.
+
+| Env var | What |
+|---|---|
+| `INCIPIT_ATLASSIAN_OAUTH_CLIENT_ID` | Atlassian OAuth app client id (public; a registered default is built in) |
+| `INCIPIT_ATLASSIAN_OAUTH_CLIENT_SECRET` | Atlassian OAuth app client secret — **secret**, set via env/Doppler, never commit |
+| `INCIPIT_ATLASSIAN_OAUTH_REDIRECT_URL` | Callback URL registered on the app (`…/auth/atlassian/callback`) |
+| `INCIPIT_ATLASSIAN_OAUTH_SCOPES` | Console scopes (default `read:jira-work write:jira-work read:jira-user`); `offline_access` is appended at request time so a refresh token is issued |
+| `INCIPIT_JIRA_ISSUE_TYPES` | Comma-separated issue types for the dropdown (default `Task,Story,Bug`) |
+| `INCIPIT_JIRA_DEFAULT_PROJECT_KEY` | Optional project key to pre-select |
+| `INCIPIT_JIRA_EXPORT_TIMEOUT` | End-to-end export budget in ms (default `4000`) |
+
+Export events are recorded on the `promptgen.audit` logger. Leave the Atlassian
+client id/secret blank to hide the button. **`INCIPIT_ATLASSIAN_OAUTH_CLIENT_SECRET`
+must be supplied via env/Doppler** for the export flow to work.
+
+### All environment variables
+
+One table so a Doppler (or `.env`) config can be populated end-to-end. Secrets
+are flagged — never commit them.
+
+| Env var | Purpose | Default |
+|---|---|---|
+| `INCIPIT_BACKEND` | LLM backend: `openai` \| `diffusion-cnv` \| `diffusion-oneshot` | `openai` |
+| `INCIPIT_OPENAI_BASE_URL` | OpenAI-compatible endpoint base URL | `http://localhost:11434/v1` |
+| `INCIPIT_OPENAI_MODEL` | Default model id (overridable in the UI) | _(empty)_ |
+| `INCIPIT_OPENAI_API_KEY` | API key for the endpoint (**secret**) | _(empty)_ |
+| `WEBUI_API_URL` | Doppler/Open WebUI endpoint alias; an origin is normalized to `/api` | _(empty)_ |
+| `WEBUI_MODEL` | Model alias used when `INCIPIT_OPENAI_MODEL` is unset | _(empty)_ |
+| `WEBUI_API_KEY` | API-key alias used when `INCIPIT_OPENAI_API_KEY` is unset (**secret**) | _(empty)_ |
+| `INCIPIT_REASONING_EFFORT` | `default` \| `none` \| `low` \| `medium` \| `high` | `default` |
+| `INCIPIT_DISABLE_THINKING` | Back-compat: truthy → `reasoning_effort=none` | _(unset)_ |
+| `INCIPIT_ALLOWED_BASE_URL_HOSTS` | Extra hosts allowed for the model endpoint (SSRF allow-list) | _(empty)_ |
+| `INCIPIT_SETTINGS_FILE` | Path for persisted UI settings | `.promptgen.json` |
+| `INCIPIT_MAX_TOKENS` | Max generated tokens | `2048` |
+| `INCIPIT_GEN_TIMEOUT` | Generation timeout (s) | `300` |
+| `INCIPIT_LOAD_TIMEOUT` | Model load timeout (s) | `600` |
+| `INCIPIT_IDLE_TIMEOUT` | Idle-kill timeout for the diffusion subprocess (s) | `600` |
+| `INCIPIT_CLI_BIN` | Path to `llama-diffusion-cli` (diffusion backends) | `/usr/local/bin/llama-diffusion-cli` |
+| `INCIPIT_MODEL` | GGUF model path (diffusion backends) | _(see config)_ |
+| `INCIPIT_NGL` / `INCIPIT_N_CPU_MOE` / `INCIPIT_THREADS` | Diffusion CLI GPU/CPU/thread knobs | `99` / `18` / `8` |
+| `INCIPIT_PROMPT_MARKER` | Diffusion `-cnv` turn marker | `"\n> "` |
+| `INCIPIT_DIFFUSION_ARGS` | Extra diffusion CLI args | _(see config)_ |
+| `INCIPIT_SESSION_TTL` | Session + auth-record TTL (s) | `86400` |
+| `INCIPIT_GITHUB_TOKEN` | Anonymous-rate-limit token for public repo grounding | _(empty)_ |
+| `INCIPIT_FIRECRAWL_URL` | Firecrawl base URL for non-GitHub repo scraping | _(empty)_ |
+| `INCIPIT_REPO_TIMEOUT` | Repo-fetch HTTP timeout (s) | `25` |
+| `INCIPIT_REPO_CONTEXT_MAX` | Max chars of repo context injected into prompts | `6000` |
+| `INCIPIT_GITHUB_OAUTH_CLIENT_ID` | GitHub OAuth app client id (public) | _(built-in default)_ |
+| `INCIPIT_GITHUB_OAUTH_CLIENT_SECRET` | GitHub OAuth app client secret (**secret**) | _(empty)_ |
+| `INCIPIT_GITHUB_OAUTH_REDIRECT_URL` | GitHub OAuth callback URL | `https://incipit.nexus.inmotionhosting.com/auth/github/callback` |
+| `INCIPIT_GITHUB_OAUTH_SCOPES` | GitHub OAuth scopes | `repo` |
+| `INCIPIT_ATLASSIAN_OAUTH_CLIENT_ID` | Atlassian OAuth app client id (public) | _(built-in default)_ |
+| `INCIPIT_ATLASSIAN_OAUTH_CLIENT_SECRET` | Atlassian OAuth app client secret (**secret**) | _(empty)_ |
+| `INCIPIT_ATLASSIAN_OAUTH_REDIRECT_URL` | Atlassian OAuth callback URL | `https://incipit.nexus.inmotionhosting.com/auth/atlassian/callback` |
+| `INCIPIT_ATLASSIAN_OAUTH_SCOPES` | Atlassian console scopes (`offline_access` appended at request time) | `read:jira-work write:jira-work read:jira-user` |
+| `INCIPIT_JIRA_ISSUE_TYPES` | Issue-type dropdown options | `Task,Story,Bug` |
+| `INCIPIT_JIRA_DEFAULT_PROJECT_KEY` | Pre-selected project key | _(empty)_ |
+| `INCIPIT_JIRA_EXPORT_TIMEOUT` | Export time budget (ms) | `4000` |
+| `INCIPIT_SESSION_COOKIE_SECRET` | Secret for signing the session cookie (**secret**; set so cookies survive restarts) | _(ephemeral per-process)_ |
+| `INCIPIT_COOKIE_SECURE` | Set the cookie `Secure` flag | `true` |
+
+## Testing & coverage
+
+The app ships an offline `pytest` suite (no network, no model/subprocess) —
+OAuth flows and the Jira REST client are exercised against a mocked httpx
+transport (`respx`):
 
 ```bash
 pip install -r requirements-dev.txt
-pytest
+pytest          # runs with coverage (see pytest.ini)
 ```
+
+CI ([`../.github/workflows/ci.yml`](../.github/workflows/ci.yml)) runs the same
+suite. Coverage is gated at **90%** but **scoped** (in `pytest.ini`) to the
+security-critical, fully-offline-testable modules — `app/auth.py`,
+`app/audit.py`, `app/jira.py`, `app/markdown_adf.py` — rather than the whole
+`app` package: the LLM/diffusion backends and the wizard orchestration call out
+to a model/subprocess and aren't covered by the offline suite, so a 90% gate
+over all of `app` is impractical. The auth + export **routes** live in
+`app/main.py` alongside every wizard route (so they can't be isolated per-file
+by coverage), but they are covered by `tests/test_auth.py`,
+`tests/test_jira_auth.py`, and `tests/test_jira_export.py`.
 
 There is no build step or linter. For a fast dev loop, point the app at any
 running endpoint and run `uvicorn` as above.
@@ -112,7 +217,7 @@ Incipit was originally built around **DiffusionGemma 26B-A4B-it** run through
 `llama-diffusion-cli` (llama.cpp PR #24423, which has no HTTP server yet — the
 app drives a persistent `-cnv` subprocess over stdin/stdout). This path requires
 building llama.cpp from a pinned PR and a GPU, and is selected with
-`PROMPTGEN_BACKEND=diffusion-cnv` (or `diffusion-oneshot`). It is **not** needed
+`INCIPIT_BACKEND=diffusion-cnv` (or `diffusion-oneshot`). It is **not** needed
 for the OpenAI-compatible path above.
 
 ```bash
@@ -125,7 +230,7 @@ hf download unsloth/diffusiongemma-26B-A4B-it-GGUF diffusiongemma-26B-A4B-it-Q4_
 podman build -t localhost/promptgen:v3 .
 ```
 
-Backends (`PROMPTGEN_BACKEND`):
+Backends (`INCIPIT_BACKEND`):
 
 | Value | What |
 |---|---|

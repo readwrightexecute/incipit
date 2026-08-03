@@ -116,8 +116,8 @@ review, and the optional GPU DiffusionGemma backend.
 The two halves are independent and verify separately:
 
 ```bash
-cd skills && pytest    # 107 tests, standard library only
-cd webapp && pytest    # 118 tests, offline
+cd skills && pytest    # 108 tests, standard library only
+cd webapp && pytest    # 215 tests, offline, with a scoped coverage gate
 ```
 
 ## License

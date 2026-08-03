@@ -1,9 +1,13 @@
 __pycache__/
 *.pyc
 .promptgen.json
+.incipit.json
 .env
 .venv/
 .pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
 # Claude Code authoring tooling — general skill, not part of this repo. Kept on
 # disk (so it still works locally) but not tracked; it dominated every diff.
 .claude/skills/

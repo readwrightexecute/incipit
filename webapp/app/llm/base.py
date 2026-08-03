@@ -1,5 +1,5 @@
 """Backend interface. Everything above this boundary is backend-agnostic, so the
-diffusion CLI can be swapped for an OpenAI-compatible endpoint via PROMPTGEN_BACKEND."""
+diffusion CLI can be swapped for an OpenAI-compatible endpoint via INCIPIT_BACKEND."""
 
 from typing import Protocol
 
@@ -31,4 +31,4 @@ def get_backend() -> "LLMBackend":
         from app.llm.openai_compat import OpenAIBackend
 
         return OpenAIBackend()
-    raise ValueError(f"Unknown PROMPTGEN_BACKEND: {config.BACKEND}")
+    raise ValueError(f"Unknown INCIPIT_BACKEND: {config.BACKEND}")

@@ -7,7 +7,7 @@ OpenAI-compatible backend will talk to).
 
 import pytest
 
-from app import settings
+from app import config, settings
 from app.settings import (
     REASONING_EFFORTS,
     SettingsError,
@@ -22,7 +22,8 @@ def _clear_allowlist_env(monkeypatch):
     """Start every test from a known allow-list: only the built-in defaults
     (localhost, 127.0.0.1, ::1, api.openai.com) plus the env-seeded base URL
     host. Tests opt extra hosts in explicitly."""
-    monkeypatch.delenv("PROMPTGEN_ALLOWED_BASE_URL_HOSTS", raising=False)
+    monkeypatch.delenv("INCIPIT_ALLOWED_BASE_URL_HOSTS", raising=False)
+    monkeypatch.delenv("WEBUI_API_URL", raising=False)
 
 
 # --- allowed_base_url_hosts -------------------------------------------------
@@ -40,7 +41,7 @@ def test_allowed_hosts_includes_seeded_base_url_host():
 
 def test_allowed_hosts_picks_up_env_extra_hosts(monkeypatch):
     monkeypatch.setenv(
-        "PROMPTGEN_ALLOWED_BASE_URL_HOSTS",
+        "INCIPIT_ALLOWED_BASE_URL_HOSTS",
         "https://my.endpoint.com:8443/v1, bare.example.com ,",
     )
     hosts = allowed_base_url_hosts()
@@ -53,7 +54,7 @@ def test_allowed_hosts_picks_up_env_extra_hosts(monkeypatch):
 
 
 def test_allowed_hosts_lowercases_env_hosts(monkeypatch):
-    monkeypatch.setenv("PROMPTGEN_ALLOWED_BASE_URL_HOSTS", "API.Example.COM")
+    monkeypatch.setenv("INCIPIT_ALLOWED_BASE_URL_HOSTS", "API.Example.COM")
     assert "api.example.com" in allowed_base_url_hosts()
 
 
@@ -68,8 +69,39 @@ def test_normalize_accepts_localhost():
 
 
 def test_normalize_accepts_env_added_host(monkeypatch):
-    monkeypatch.setenv("PROMPTGEN_ALLOWED_BASE_URL_HOSTS", "my.endpoint.com")
+    monkeypatch.setenv("INCIPIT_ALLOWED_BASE_URL_HOSTS", "my.endpoint.com")
     assert normalize_base_url("https://my.endpoint.com/v1") == "https://my.endpoint.com/v1"
+
+
+def test_webui_alias_normalizes_origin_and_allows_host(monkeypatch):
+    monkeypatch.setenv("WEBUI_API_URL", "https://webui.example.com")
+    monkeypatch.setattr(config, "WEBUI_API_BASE", "https://webui.example.com/api")
+    assert normalize_base_url("https://webui.example.com") == \
+        "https://webui.example.com/api"
+
+
+def test_webui_completions_url_is_trimmed(monkeypatch):
+    monkeypatch.setenv("WEBUI_API_URL", "https://webui.example.com/api/chat/completions")
+    monkeypatch.setattr(config, "WEBUI_API_BASE", "https://webui.example.com/api")
+    assert normalize_base_url(
+        "https://webui.example.com/api/chat/completions"
+    ) == "https://webui.example.com/api"
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("https://webui.example.com", "https://webui.example.com/api"),
+        ("https://webui.example.com/api", "https://webui.example.com/api"),
+        (
+            "https://webui.example.com/api/chat/completions",
+            "https://webui.example.com/api",
+        ),
+    ],
+)
+def test_webui_env_alias_to_api_base(monkeypatch, raw, expected):
+    monkeypatch.setenv("WEBUI_API_URL", raw)
+    assert config._webui_api_base() == expected
 
 
 def test_normalize_host_match_is_case_insensitive():

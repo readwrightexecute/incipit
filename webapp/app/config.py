@@ -1,8 +1,9 @@
-"""Environment-driven settings. Every knob has a PROMPTGEN_* env override."""
+"""Environment-driven settings. Every knob has a INCIPIT_* env override."""
 
 import logging
 import os
 import shlex
+from urllib.parse import urlparse
 
 try:
     from dotenv import load_dotenv
@@ -27,26 +28,47 @@ def _int(name: str, default: int) -> int:
         return default
 
 
+def _bool(name: str, default: bool) -> bool:
+    """Parse a boolean env override. Truthy: 1/true/yes/on (case-insensitive)."""
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in ("1", "true", "yes", "on")
+
+
+def _webui_api_base() -> str:
+    """Normalize a shared Open WebUI URL into its OpenAI-compatible API base."""
+    raw = os.environ.get("WEBUI_API_URL", "").strip().rstrip("/")
+    if not raw:
+        return ""
+    if raw.endswith("/chat/completions"):
+        return raw[: -len("/chat/completions")]
+    parsed = urlparse(raw)
+    if parsed.scheme and parsed.netloc and parsed.path in ("", "/"):
+        return raw + "/api"
+    return raw
+
+
 # Backend selection: openai | diffusion-cnv | diffusion-oneshot
 # Default is `openai` so a fresh clone runs against any OpenAI-compatible
 # endpoint (Ollama by default) with no GPU / llama.cpp build. The diffusion
 # backends are the opt-in "advanced" path (see README).
-BACKEND = os.environ.get("PROMPTGEN_BACKEND", "openai")
+BACKEND = os.environ.get("INCIPIT_BACKEND", "openai")
 
 # llama-diffusion-cli settings
-CLI_BIN = os.environ.get("PROMPTGEN_CLI_BIN", "/usr/local/bin/llama-diffusion-cli")
+CLI_BIN = os.environ.get("INCIPIT_CLI_BIN", "/usr/local/bin/llama-diffusion-cli")
 MODEL_PATH = os.environ.get(
-    "PROMPTGEN_MODEL",
+    "INCIPIT_MODEL",
     "/models/diffusiongemma-26B-A4B-it-GGUF/diffusiongemma-26B-A4B-it-Q4_K_M.gguf",
 )
-N_GPU_LAYERS = os.environ.get("PROMPTGEN_NGL", "99")
-N_CPU_MOE = os.environ.get("PROMPTGEN_N_CPU_MOE", "18")
-THREADS = os.environ.get("PROMPTGEN_THREADS", "8")
-MAX_TOKENS = _int("PROMPTGEN_MAX_TOKENS", 2048)
-PROMPT_MARKER = os.environ.get("PROMPTGEN_PROMPT_MARKER", "\n> ")
+N_GPU_LAYERS = os.environ.get("INCIPIT_NGL", "99")
+N_CPU_MOE = os.environ.get("INCIPIT_N_CPU_MOE", "18")
+THREADS = os.environ.get("INCIPIT_THREADS", "8")
+MAX_TOKENS = _int("INCIPIT_MAX_TOKENS", 2048)
+PROMPT_MARKER = os.environ.get("INCIPIT_PROMPT_MARKER", "\n> ")
 
 DIFFUSION_ARGS = os.environ.get(
-    "PROMPTGEN_DIFFUSION_ARGS",
+    "INCIPIT_DIFFUSION_ARGS",
     "--diffusion-eb auto --diffusion-eb-max-steps 48 "
     "--diffusion-eb-t-max 0.8 --diffusion-eb-t-min 0.4 "
     "--diffusion-eb-entropy-bound 0.1 --diffusion-eb-confidence 0.005 "
@@ -57,16 +79,21 @@ DIFFUSION_ARGS = os.environ.get(
 DIFFUSION_ARGS = shlex.split(DIFFUSION_ARGS)
 
 # Timeouts (seconds)
-GEN_TIMEOUT = _int("PROMPTGEN_GEN_TIMEOUT", 300)
-LOAD_TIMEOUT = _int("PROMPTGEN_LOAD_TIMEOUT", 600)
-IDLE_TIMEOUT = _int("PROMPTGEN_IDLE_TIMEOUT", 600)
+GEN_TIMEOUT = _int("INCIPIT_GEN_TIMEOUT", 300)
+LOAD_TIMEOUT = _int("INCIPIT_LOAD_TIMEOUT", 600)
+IDLE_TIMEOUT = _int("INCIPIT_IDLE_TIMEOUT", 600)
 
 # OpenAI-compatible endpoint (the default backend). Defaults target a local
-# Ollama install; override for LM Studio, llama-server, vLLM, or OpenAI proper.
-# These seed the runtime settings (app/settings.py), which the UI can override.
-OPENAI_BASE_URL = os.environ.get("PROMPTGEN_OPENAI_BASE_URL", "http://localhost:11434/v1")
-OPENAI_MODEL = os.environ.get("PROMPTGEN_OPENAI_MODEL", "")
-OPENAI_API_KEY = os.environ.get("PROMPTGEN_OPENAI_API_KEY", "")
+# Ollama install; override for LM Studio, llama-server, vLLM, Open WebUI, or
+# OpenAI proper. WEBUI_* aliases support shared Doppler configurations.
+WEBUI_API_BASE = _webui_api_base()
+OPENAI_BASE_URL = (
+    os.environ.get("INCIPIT_OPENAI_BASE_URL")
+    or WEBUI_API_BASE
+    or "http://localhost:11434/v1"
+)
+OPENAI_MODEL = os.environ.get("INCIPIT_OPENAI_MODEL") or os.environ.get("WEBUI_MODEL", "")
+OPENAI_API_KEY = os.environ.get("INCIPIT_OPENAI_API_KEY") or os.environ.get("WEBUI_API_KEY", "")
 
 # Reasoning effort sent to the OpenAI-compatible endpoint. One of:
 #   default          - omit the field entirely (the model decides)
@@ -74,17 +101,17 @@ OPENAI_API_KEY = os.environ.get("PROMPTGEN_OPENAI_API_KEY", "")
 #   low | medium | high - reasoning_effort=<level>
 # Seeds the runtime setting (app/settings.py); the UI can override it live.
 # Only the OpenAI-compatible backend reads this; the diffusion backends ignore it.
-# Back-compat: the older PROMPTGEN_DISABLE_THINKING boolean maps truthy -> "none".
+# Back-compat: the older INCIPIT_DISABLE_THINKING boolean maps truthy -> "none".
 _REASONING_EFFORTS = ("default", "none", "low", "medium", "high")
 
 
 def _reasoning_effort_default() -> str:
-    val = os.environ.get("PROMPTGEN_REASONING_EFFORT", "").strip().lower()
+    val = os.environ.get("INCIPIT_REASONING_EFFORT", "").strip().lower()
     if val in _REASONING_EFFORTS:
         return val
     if val:
         return "default"  # unrecognized explicit value -> safe default
-    if os.environ.get("PROMPTGEN_DISABLE_THINKING", "").lower() in ("1", "true", "yes"):
+    if os.environ.get("INCIPIT_DISABLE_THINKING", "").lower() in ("1", "true", "yes"):
         return "none"
     return "default"
 
@@ -92,14 +119,79 @@ def _reasoning_effort_default() -> str:
 REASONING_EFFORT = _reasoning_effort_default()
 
 # Session housekeeping
-SESSION_TTL = _int("PROMPTGEN_SESSION_TTL", 24 * 3600)
+SESSION_TTL = _int("INCIPIT_SESSION_TTL", 24 * 3600)
 
 # Existing-project repo grounding (Workstream F). For "existing" projects the
 # wizard fetches a compact repo summary and injects it into the drafting prompts.
 # GITHUB_TOKEN is optional (lifts the 60 req/h anonymous rate limit). FIRECRAWL_URL
 # is the homelab Firecrawl base (e.g. http://firecrawl.default.svc:3002) used as a
 # fallback for non-GitHub hosts or API failures; blank disables the fallback.
-GITHUB_TOKEN = os.environ.get("PROMPTGEN_GITHUB_TOKEN", "")
-FIRECRAWL_URL = os.environ.get("PROMPTGEN_FIRECRAWL_URL", "")
-REPO_TIMEOUT = _int("PROMPTGEN_REPO_TIMEOUT", 25)
-REPO_CONTEXT_MAX_CHARS = _int("PROMPTGEN_REPO_CONTEXT_MAX", 6000)
+GITHUB_TOKEN = os.environ.get("INCIPIT_GITHUB_TOKEN", "")
+FIRECRAWL_URL = os.environ.get("INCIPIT_FIRECRAWL_URL", "")
+REPO_TIMEOUT = _int("INCIPIT_REPO_TIMEOUT", 25)
+REPO_CONTEXT_MAX_CHARS = _int("INCIPIT_REPO_CONTEXT_MAX", 6000)
+
+# --- GitHub OAuth login (per-user "Login with GitHub") ---------------------
+# Lets a signed-in user ground the spec in their own private repos. The user's
+# access token is stored server-side only (app/auth.py); the browser cookie
+# carries just a signed, opaque session id. The CLIENT_ID below is the public,
+# registered OAuth-app id (not a secret); the CLIENT_SECRET must come from the
+# environment (Doppler/Vault) and must never be committed. Blank client
+# id/secret simply disables the login button.
+GITHUB_OAUTH_CLIENT_ID = os.environ.get(
+    "INCIPIT_GITHUB_OAUTH_CLIENT_ID", "Ov23liQTAZncU8NnfMS4")
+GITHUB_OAUTH_CLIENT_SECRET = os.environ.get("INCIPIT_GITHUB_OAUTH_CLIENT_SECRET", "")
+GITHUB_OAUTH_REDIRECT_URL = os.environ.get(
+    "INCIPIT_GITHUB_OAUTH_REDIRECT_URL",
+    "https://incipit.nexus.inmotionhosting.com/auth/github/callback")
+GITHUB_OAUTH_SCOPES = os.environ.get("INCIPIT_GITHUB_OAUTH_SCOPES", "repo")
+
+# --- Atlassian (Jira) OAuth 2.0 / 3LO ("Sign in with Atlassian") -----------
+# Per-user Jira export: each user authorizes their own Atlassian site. The
+# access + refresh tokens and the resolved cloudId / site live server-side only
+# (app/auth.py); the browser cookie carries just the signed, opaque session id.
+# CLIENT_ID is the public, registered OAuth-app id (not a secret); CLIENT_SECRET
+# must come from the environment (Doppler/Vault) and must never be committed.
+# `offline_access` is appended to the scope at request time (not configured
+# here) so Atlassian returns a refresh token. Blank client id/secret disables
+# the "Sign in with Atlassian" button.
+ATLASSIAN_OAUTH_CLIENT_ID = os.environ.get(
+    "INCIPIT_ATLASSIAN_OAUTH_CLIENT_ID", "gp295kGiSA32NqMPoeQCwMmbSTI8wjtp")
+ATLASSIAN_OAUTH_CLIENT_SECRET = os.environ.get(
+    "INCIPIT_ATLASSIAN_OAUTH_CLIENT_SECRET", "")
+ATLASSIAN_OAUTH_REDIRECT_URL = os.environ.get(
+    "INCIPIT_ATLASSIAN_OAUTH_REDIRECT_URL",
+    "https://incipit.nexus.inmotionhosting.com/auth/atlassian/callback")
+ATLASSIAN_OAUTH_SCOPES = os.environ.get(
+    "INCIPIT_ATLASSIAN_OAUTH_SCOPES",
+    "read:jira-work write:jira-work read:jira-user")
+
+# --- Jira export (issue creation over REST v3) -----------------------------
+# Issue types offered in the export dropdown. Defaults match a standard Jira
+# Cloud software/business project; override per-instance if your projects use a
+# different scheme.
+JIRA_ISSUE_TYPES = [
+    t.strip() for t in os.environ.get(
+        "INCIPIT_JIRA_ISSUE_TYPES", "Task,Story,Bug").split(",") if t.strip()
+]
+# Optional project key to pre-select in the export dropdown (blank = none).
+JIRA_DEFAULT_PROJECT_KEY = os.environ.get("INCIPIT_JIRA_DEFAULT_PROJECT_KEY", "")
+# End-to-end export time budget in milliseconds (create issue + attach .md).
+# The route enforces it; an overrun returns a clear per-export failure message.
+JIRA_EXPORT_TIMEOUT_MS = _int("INCIPIT_JIRA_EXPORT_TIMEOUT", 4000)
+
+# Secret used to sign the opaque session-id cookie (itsdangerous). If unset we
+# generate an ephemeral per-process secret: cookies then work within a single
+# run but don't survive a restart — acceptable for the single-replica design,
+# but set this in any real deploy so sessions persist across restarts.
+SESSION_COOKIE_SECRET = os.environ.get("INCIPIT_SESSION_COOKIE_SECRET", "")
+if not SESSION_COOKIE_SECRET:
+    import secrets as _secrets
+
+    SESSION_COOKIE_SECRET = _secrets.token_urlsafe(32)
+    log.warning("INCIPIT_SESSION_COOKIE_SECRET not set; using an ephemeral "
+                "per-process secret (auth cookies won't survive a restart)")
+
+# Set the Secure flag on auth cookies (HTTPS only). Default true; set false for
+# local plain-HTTP development.
+COOKIE_SECURE = _bool("INCIPIT_COOKIE_SECURE", True)

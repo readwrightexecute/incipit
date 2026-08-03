@@ -2,7 +2,7 @@
 
 Pays a full model load per call, but supports multi-line prompts cleanly via
 -f and avoids all stdin-protocol fragility. Used if -cnv pipe-driving proves
-unreliable (PROMPTGEN_BACKEND=diffusion-oneshot).
+unreliable (INCIPIT_BACKEND=diffusion-oneshot).
 """
 
 import asyncio

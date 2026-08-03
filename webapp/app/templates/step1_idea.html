@@ -24,6 +24,27 @@
     <label for="repo_url" class="seg-legend">Repo link <small class="seg-hint" style="font-weight:400">— so the spec fits your existing codebase</small></label>
     <input type="url" id="repo_url" name="repo_url" value="{{ repo_url|default('') }}" placeholder="https://github.com/owner/repo">
     <small class="assumption">We fetch the README + structure and feed a summary into drafting. Public GitHub works best; leave blank to skip.</small>
+
+    {% if github_configured %}
+    <div class="gh-connected">
+      {% if github_connected %}
+      <small class="assumption">
+        Connected to GitHub as <strong>{{ github_login }}</strong> ·
+        <a href="#" role="button" class="secondary outline" style="width:auto;padding:.1rem .55rem;font-size:var(--fs-xs)"
+           hx-post="/auth/github/logout">Log out</a>
+      </small>
+      <div id="gh-repos"
+           hx-get="/api/github/repos{% if repo_selection_sid %}?sid={{ repo_selection_sid }}{% endif %}"
+           hx-trigger="load" hx-target="this" hx-swap="innerHTML">
+        <small class="assumption"><span class="spinner" data-anim="pulse"></span> Loading your repositories…</small>
+      </div>
+      {% else %}
+      <a role="button" class="secondary" style="width:auto"
+         href="/auth/github/login?return_to=/">Login with GitHub to pick private repos</a>
+      <small class="assumption">Optional — grounds the spec in your <em>private</em> repos. Your token stays on the server.</small>
+      {% endif %}
+    </div>
+    {% endif %}
   </div>
 
   <small class="assumption">

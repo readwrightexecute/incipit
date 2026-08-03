@@ -1,0 +1,11 @@
+<div class="history-modal" role="alertdialog" aria-modal="true" aria-labelledby="gh-err-title">
+  <article>
+    <header><h3 id="gh-err-title">🔐 GitHub access needed</h3></header>
+    <p>{{ reason|default("We couldn't read your GitHub repositories.") }}</p>
+    <footer class="final-actions">
+      <button class="secondary" type="button"
+              onclick="this.closest('.history-modal').remove()">Dismiss</button>
+      <a role="button" href="/auth/github/login?return_to=/">Re-authorize</a>
+    </footer>
+  </article>
+</div>

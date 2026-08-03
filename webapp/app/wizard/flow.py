@@ -10,7 +10,7 @@ from pathlib import Path
 import yaml
 from jinja2 import Environment, FileSystemLoader
 
-from app import config, repo
+from app import auth, config, repo
 from app.llm.base import GenerationError, get_backend
 from app.wizard import state
 from app.wizard.state import QA, PartyChange, PartyMessage, PartyQAChange, Section, Session
@@ -67,13 +67,33 @@ def _ctx(s: Session) -> dict:
 
 
 async def _ensure_repo_context(s: Session) -> None:
-    """For existing projects with a repo link, fetch a compact codebase summary
-    once and cache it on the session so it can ground clarify + drafting."""
-    if s.repo_context or s.project_type != "existing" or not s.repo_url:
+    """For existing projects, fetch a compact codebase summary once and cache it
+    on the session so it can ground clarify + drafting. Combines any private
+    repos the user picked after signing in with GitHub (fetched with their
+    server-side token) and the no-login repo_url fallback, token-budgeted by
+    config.REPO_CONTEXT_MAX_CHARS so the prompt can't blow up."""
+    if s.repo_context or s.project_type != "existing":
+        return
+    if not s.selected_repos and not s.repo_url:
         return
     await _emit(s, "progress",
                 '<span class="spinner" data-anim="pulse"></span> Reading the repo…')
-    s.repo_context = await repo.fetch_repo_context(s.repo_url)
+    budget = config.REPO_CONTEXT_MAX_CHARS
+    parts: list[str] = []
+    github = auth.get_provider(s.github_auth_id, "github")
+    github_token = github.access_token if github else ""
+    for full_name in s.selected_repos if github_token else []:
+        if budget <= 0:
+            break
+        ctx = (await repo.fetch_selected_repo_context(full_name, github_token))[:budget]
+        if ctx:
+            parts.append(ctx)
+            budget -= len(ctx)
+    if s.repo_url and budget > 0:
+        ctx = (await repo.fetch_repo_context(s.repo_url))[:budget]
+        if ctx:
+            parts.append(ctx)
+    s.repo_context = "\n\n---\n\n".join(parts)
     await _emit(s, "progress", "")
 
 
@@ -81,12 +101,12 @@ async def _emit(s: Session, event: str, data: str = "") -> None:
     s.publish(event, data)
 
 
-async def _generate(s: Session, prompt: str, max_tokens: int = 2048,
-                    label: str = "Working") -> str:
-    """One LLM call with a contextual progress/model-loading heartbeat."""
+async def _with_status(s: Session, label: str, coro):
+    """Run an LLM coroutine while a contextual progress/model-loading heartbeat
+    feeds the status bar, then clear the bar when it finishes."""
     notify_task = asyncio.create_task(_heartbeat(s, label))
     try:
-        return await backend.generate(prompt, system=SYSTEM, max_tokens=max_tokens)
+        return await coro
     finally:
         notify_task.cancel()
         # _heartbeat swallows CancelledError and returns, so awaiting it here
@@ -100,6 +120,13 @@ async def _generate(s: Session, prompt: str, max_tokens: int = 2048,
         except asyncio.CancelledError:
             pass
         await _emit(s, "progress", "")
+
+
+async def _generate(s: Session, prompt: str, max_tokens: int = 2048,
+                    label: str = "Working") -> str:
+    """One LLM call with a contextual progress/model-loading heartbeat."""
+    return await _with_status(
+        s, label, backend.generate(prompt, system=SYSTEM, max_tokens=max_tokens))
 
 
 def _anim_for(label: str) -> str:
@@ -480,23 +507,23 @@ async def _round_table(s: Session, subject: str,
                 turns += 1
 
 
-async def run_party(s: Session) -> None:
+async def run_party(s: Session, *, auto_apply: bool = False) -> None:
     """Orchestrate the round table: opening round → facilitator-driven
-    mic-passing until consensus → synthesize approvable changes."""
+    mic-passing until consensus → synthesize approvable changes.
+
+    `auto_apply` only changes the consensus message wording: the moonshot flow
+    applies the agreed changes itself (no manual review), so we say "applied
+    automatically" instead of telling the user to review them below."""
     try:
         s.party_status = "running"
         s.party_messages = []
         s.party_changes = []
         await _emit(s, "party_started")
         spec = assemble_final(s)
-        # phase moves to "sections" during drafting, so key off moonshot_status
-        moonshot = s.moonshot_status == "running"
         await _say(s, PartyMessage("system", "", "", "",
             "🎤 Round table convened. Each reviewer speaks once, then the facilitator "
             "passes the mic back to resolve any disagreements until the group reaches "
-            "consensus. " + ("The agreed changes are applied automatically."
-                             if moonshot else
-                             "Then you'll approve or deny the agreed changes."), "system"))
+            "consensus. Then you'll approve or deny the agreed changes.", "system"))
 
         await _round_table(s, spec)
 
@@ -511,10 +538,15 @@ async def run_party(s: Session) -> None:
         s.party_status = "ready"
         await _emit(s, "party_turn", "")
         n = len(s.party_changes)
-        await _say(s, PartyMessage("system", "", "", "",
-            f"✅ Consensus reached — {n} proposed change{'' if n == 1 else 's'}. "
-            + ("Applying them now." if moonshot else "Review them below.") if n else
-            "✅ The group reviewed the spec and proposed no changes.", "system"))
+        if not n:
+            consensus_msg = "✅ The group reviewed the spec and proposed no changes."
+        else:
+            changes = f"{n} proposed change{'' if n == 1 else 's'}"
+            # Moonshot auto-applies the consensus; the normal flow waits for the
+            # user to review/approve each change below.
+            tail = ", applied automatically." if auto_apply else ". Review them below."
+            consensus_msg = f"✅ Consensus reached — {changes}{tail}"
+        await _say(s, PartyMessage("system", "", "", "", consensus_msg, "system"))
         await _emit(s, "party_ready")
     except Exception as e:
         log.exception("party mode failed")
@@ -676,7 +708,11 @@ async def _infer_calibration(s: Session) -> tuple[str, str, str]:
     )
     stakes, form_factor, project_type = "internal", "web app", "new"
     try:
-        raw = await _party_gen(prompt, max_tokens=48)
+        # Usually the first model call of a run, so this is where a cold start /
+        # model switch lands — wrap it in the heartbeat so the status bar shows
+        # the "loading model" graphic instead of nothing.
+        raw = await _with_status(
+            s, "Reading your idea", _party_gen(prompt, max_tokens=48))
     except Exception:
         return stakes, form_factor, project_type
     for ln in raw.splitlines():
@@ -734,7 +770,7 @@ async def run_moonshot(s: Session) -> None:
         await run_sections(s)
 
         await _emit(s, "moon", "🎉 Convening the BMAD round table…")
-        await run_party(s)
+        await run_party(s, auto_apply=True)
 
         pending = [c.id for c in s.party_changes if c.status == "pending"]
         if pending:
