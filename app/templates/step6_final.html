@@ -6,9 +6,36 @@
   <div class="action-bar">
     <button id="copy-btn" onclick="copyPrompt()" aria-live="polite">Copy to clipboard</button>
     <a href="/sessions/{{ s.id }}/download.md" role="button" class="secondary">Download .md</a>
+    {% if atlassian_configured and not atlassian_connected %}
+    <a href="/auth/atlassian/login?return_to=/sessions/{{ s.id }}" role="button" class="secondary">Sign in with Atlassian</a>
+    {% endif %}
     <a href="/" role="button" class="contrast outline">New session</a>
   </div>
   <div class="section-content" id="mega-prompt">{{ mega_prompt }}</div>
+
+  {% if atlassian_configured %}
+  <div id="jira-export" class="jira-export">
+    <h3 class="jira-heading">Export to Jira</h3>
+    {% if atlassian_connected %}
+      <p class="jira-chip">
+        <span class="jira-dot" aria-hidden="true"></span>
+        Connected to Atlassian{% if atlassian_site %} · <strong>{{ atlassian_site }}</strong>{% endif %}
+        <button type="button" class="secondary outline jira-disconnect"
+                hx-post="/auth/atlassian/logout" hx-swap="none">Disconnect</button>
+      </p>
+      <div id="jira-controls-region" hx-get="/api/jira/projects?sid={{ s.id }}"
+           hx-trigger="load" hx-swap="innerHTML">
+        <p class="jira-hint">Loading your Jira projects
+          <span class="spinner" data-anim="pulse" aria-hidden="true"></span></p>
+      </div>
+    {% else %}
+      <p class="jira-hint">Sign in with your own Atlassian account to push this brief into a Jira issue.</p>
+      {% if atlassian_error %}
+      <p class="error" role="alert">{{ atlassian_error }} Please try again.</p>
+      {% endif %}
+    {% endif %}
+  </div>
+  {% endif %}
 </div>
 <script>
 function copyPrompt() {

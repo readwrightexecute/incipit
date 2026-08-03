@@ -26,13 +26,13 @@ There is no test suite, linter, or build step for the Python app. The fast dev
 loop avoids spawning the GPU model by pointing at an OpenAI-compatible endpoint:
 
 ```bash
-PROMPTGEN_BACKEND=openai \
-PROMPTGEN_OPENAI_BASE_URL=http://<llm-server>:<port>/v1 \
-PROMPTGEN_OPENAI_API_KEY=<key> \
+INCIPIT_BACKEND=openai \
+INCIPIT_OPENAI_BASE_URL=http://<llm-server>:<port>/v1 \
+INCIPIT_OPENAI_API_KEY=<key> \
 python3 -m uvicorn app.main:app --port 8911
 ```
 
-All configuration is environment variables (`PROMPTGEN_*`) read in
+All configuration is environment variables (`INCIPIT_*`) read in
 `app/config.py` — there is no config file. Container CMD runs uvicorn on
 `:8000`.
 
@@ -66,7 +66,7 @@ Request/orchestration flow is fully async and event-driven:
   open connection** (`subscribers` list) — a shared queue would split events
   between stale and live tabs.
 - **`app/llm/`** — backend abstraction behind the `LLMBackend` Protocol
-  (`base.py`). `get_backend()` selects by `PROMPTGEN_BACKEND`. Everything above
+  (`base.py`). `get_backend()` selects by `INCIPIT_BACKEND`. Everything above
   this boundary is backend-agnostic.
 
 ### Wizard phases
@@ -89,7 +89,7 @@ To change what the spec contains, edit the YAML — not the code. Prompt wording
 lives in `app/wizard/prompts/*.md.j2`; the system prompt is loaded once at
 import (`flow.SYSTEM`).
 
-### Backends (`PROMPTGEN_BACKEND`)
+### Backends (`INCIPIT_BACKEND`)
 
 - **`openai`** (default, `app/llm/openai_compat.py`) — any OpenAI-compatible
   endpoint. Reads endpoint/model/key from `app/settings.py` (the runtime

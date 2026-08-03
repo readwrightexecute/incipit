@@ -36,7 +36,7 @@
     },
     {
       "path": "app/llm/**/*.py",
-      "rule": "Backends sit behind the LLMBackend Protocol (base.py); get_backend() selects by PROMPTGEN_BACKEND and imports lazily. The openai path must pull in NO diffusion/GPU code. enable_thinking=false is only sent when the disable_thinking setting is on. Flag cross-backend imports or eager diffusion imports on the openai path."
+      "rule": "Backends sit behind the LLMBackend Protocol (base.py); get_backend() selects by INCIPIT_BACKEND and imports lazily. The openai path must pull in NO diffusion/GPU code. enable_thinking=false is only sent when the disable_thinking setting is on. Flag cross-backend imports or eager diffusion imports on the openai path."
     }
   ]
 }

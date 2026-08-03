@@ -1,7 +1,8 @@
 <script id="session-meta" type="application/json">{"id": "{{ s.id }}", "idea": {{ s.idea|tojson }}, "phase": "{{ s.phase }}"}</script>
 <h2 class="step-label" data-step="moonshot">🌙 Shoot the Moon</h2>
 <div hx-ext="sse" sse-connect="/sessions/{{ s.id }}/events">
-  <div id="status-bar" role="status" aria-live="polite" sse-swap="model_loading,progress,moon,error"></div>
+  {# First-paint cold-start status; the live SSE feed replaces it on connect. #}
+  <div id="status-bar" role="status" aria-live="polite" sse-swap="model_loading,progress,moon,error"><span class="spinner" data-anim="pulse"></span> Loading model (cold start, can take a minute)…</div>
   <div id="party-turn" class="party-turn" role="status" aria-live="polite" sse-swap="party_turn"></div>
 
   <div id="party-chat" class="chat" sse-swap="party_msg" hx-swap="beforeend">

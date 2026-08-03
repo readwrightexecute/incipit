@@ -1,0 +1,8 @@
+{% if ok %}
+<p class="jira-result ok">✓ Created
+  <a href="{{ url }}" target="_blank" rel="noopener noreferrer">{{ key }}</a>
+  {% if attached %}with the mega-prompt attached as <code>mega-prompt.md</code>.{% else %}— attaching the <code>.md</code> failed, but the full brief is in the issue description.{% endif %}
+</p>
+{% else %}
+<p class="jira-result error">✗ {{ message }}</p>
+{% endif %}

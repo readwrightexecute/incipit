@@ -1,7 +1,10 @@
 <script id="session-meta" type="application/json">{"id": "{{ s.id }}", "idea": {{ s.idea|tojson }}, "phase": "{{ s.phase }}"}</script>
 <h2 class="step-label" data-step="clarify">Step 2 of 3 — Clarify</h2>
 <div hx-ext="sse" sse-connect="/sessions/{{ s.id }}/events">
-  <div id="status-bar" role="status" aria-live="polite" sse-swap="model_loading,progress,error">{% if not s.qas %}<span class="spinner" data-anim="stars"></span> Thinking up the right questions…{% endif %}</div>
+  {# Static fallback so the very first paint (before the SSE heartbeat connects)
+     still shows a cold-start graphic — the first model call has to load/switch
+     the model, which can take a minute. Replaced by the live heartbeat. #}
+  <div id="status-bar" role="status" aria-live="polite" sse-swap="model_loading,progress,error">{% if not s.qas %}<span class="spinner" data-anim="pulse"></span> Loading model (cold start, can take a minute)…{% endif %}</div>
   {% include "partials/question_list.html" %}
   <div id="qa-party-region">
     {% if s.party_status != 'idle' %}{% include "partials/party_qa_panel.html" %}{% endif %}
