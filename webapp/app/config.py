@@ -36,6 +36,19 @@ def _bool(name: str, default: bool) -> bool:
     return raw.strip().lower() in ("1", "true", "yes", "on")
 
 
+def _bool_opt(name: str) -> bool | None:
+    """Parse a tri-state boolean env override: None when the variable is unset.
+
+    Used by the integration enable flags, where "unset" is meaningfully
+    different from "false" — it means "fall back to the historical
+    credentials-present detection" (see the integration flags below).
+    """
+    raw = os.environ.get(name)
+    if raw is None:
+        return None
+    return raw.strip().lower() in ("1", "true", "yes", "on")
+
+
 def _webui_api_base() -> str:
     """Normalize a shared Open WebUI URL into its OpenAI-compatible API base."""
     raw = os.environ.get("WEBUI_API_URL", "").strip().rstrip("/")
@@ -179,6 +192,34 @@ JIRA_DEFAULT_PROJECT_KEY = os.environ.get("INCIPIT_JIRA_DEFAULT_PROJECT_KEY", ""
 # End-to-end export time budget in milliseconds (create issue + attach .md).
 # The route enforces it; an overrun returns a clear per-export failure message.
 JIRA_EXPORT_TIMEOUT_MS = _int("INCIPIT_JIRA_EXPORT_TIMEOUT", 4000)
+
+# --- Integration enable flags ----------------------------------------------
+# Explicit on/off switches so a deployment controls which third-party
+# integrations exist from config (env/Doppler) instead of it being an implicit
+# side effect of which secrets happen to be set.
+#
+# Tri-state on purpose (`bool | None`):
+#   unset  -> fall back to the historical behaviour, i.e. enabled iff the
+#             integration's credentials are configured. Keeps every existing
+#             deployment behaving exactly as it does today after this upgrade.
+#   true   -> explicitly enabled. Missing credentials are then a misconfiguration
+#             and are reported at startup (app/integrations.py) rather than
+#             failing obscurely on the first request.
+#   false  -> explicitly disabled, even when credentials are present.
+#
+# The flag is never sufficient on its own: an integration is *available* only
+# when it is enabled AND its credentials are present. Resolution lives in
+# app/integrations.py; these are the raw settings.
+#
+# These are deliberately NOT exposed in the runtime settings panel
+# (app/settings.py) — see that module's docstring and the README. Enabling an
+# OAuth integration is a deployment decision, not a per-session UI toggle.
+GITHUB_ENABLED = _bool_opt("INCIPIT_GITHUB_ENABLED")
+ATLASSIAN_ENABLED = _bool_opt("INCIPIT_ATLASSIAN_ENABLED")
+# OpenProject is a placeholder: the flag exists so a deployment can be
+# configured ahead of the client, but there is no OpenProject client yet, so it
+# has no credentials and can never resolve to available. See app/integrations.py.
+OPENPROJECT_ENABLED = _bool_opt("INCIPIT_OPENPROJECT_ENABLED")
 
 # Secret used to sign the opaque session-id cookie (itsdangerous). If unset we
 # generate an ephemeral per-process secret: cookies then work within a single

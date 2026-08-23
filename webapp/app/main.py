@@ -19,7 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
-from app import audit, auth, config, jira, markdown_adf, repo, settings
+from app import audit, auth, config, integrations, jira, markdown_adf, repo, settings
 from app.llm.base import GenerationError
 from app.wizard import flow, state
 
@@ -162,11 +162,24 @@ def current_auth(request: Request) -> auth.AuthRecord | None:
 
 
 def _github_oauth_configured() -> bool:
-    return bool(config.GITHUB_OAUTH_CLIENT_ID and config.GITHUB_OAUTH_CLIENT_SECRET)
+    """Usable only when the operator enabled GitHub *and* the OAuth app is
+    configured (app/integrations.py)."""
+    return integrations.available("github")
 
 
 def _atlassian_oauth_configured() -> bool:
-    return bool(config.ATLASSIAN_OAUTH_CLIENT_ID and config.ATLASSIAN_OAUTH_CLIENT_SECRET)
+    return integrations.available("atlassian")
+
+
+def _unavailable(name: str) -> PlainTextResponse:
+    """503 for a route whose integration is switched off or unconfigured.
+
+    Covers both cases deliberately: the client can't tell them apart, and the
+    operator already has the specific reason in the startup log.
+    """
+    return PlainTextResponse(
+        f"The {integrations.REGISTRY[name].label} integration is not enabled.",
+        status_code=503)
 
 
 def _github_ctx(request: Request) -> dict:
@@ -233,13 +246,17 @@ def _spawn(coro) -> None:
 async def startup():
     # Load persisted endpoint/model settings over the env-seeded defaults.
     settings.load()
+    # Report which integrations are on, and warn about any enabled-but-
+    # unconfigured one now rather than at first click.
+    integrations.log_startup_status()
 
 
 @app.get("/healthz")
 async def healthz() -> dict:
     # Must not touch the LLM — stays Ready while the model is cold.
     return {"ok": True, "backend": config.BACKEND,
-            "llm_status": getattr(flow.backend, "status", "unknown")}
+            "llm_status": getattr(flow.backend, "status", "unknown"),
+            "integrations": integrations.status()}
 
 
 @app.get("/settings", response_class=HTMLResponse)
@@ -761,7 +778,7 @@ def _atlassian_error_redirect(return_to: str, message: str) -> RedirectResponse:
 @app.get("/auth/github/login")
 async def github_login(request: Request, return_to: str = "/"):
     if not _github_oauth_configured():
-        return PlainTextResponse("GitHub login is not configured.", status_code=503)
+        return _unavailable("github")
     # Reuse an existing session if the cookie is valid, else start a new one.
     rec = current_auth(request) or auth.create_auth()
     state = auth.new_state(rec, "github", _safe_return_to(return_to))
@@ -780,6 +797,8 @@ async def github_login(request: Request, return_to: str = "/"):
 @app.get("/auth/github/callback")
 async def github_callback(request: Request, code: str = "", state: str = "",
                           error: str = ""):
+    if not _github_oauth_configured():
+        return _unavailable("github")
     rec = current_auth(request)
     if rec is None:
         return PlainTextResponse("Auth session expired; please log in again.",
@@ -848,6 +867,8 @@ async def github_repos(request: Request, sid: str = ""):
     """The signed-in user's private repos, as a searchable multi-select partial.
     401 (not signed in / token rejected) renders the re-authorize modal instead,
     which the client swaps in via the htmx:beforeSwap 401 handler."""
+    if not _github_oauth_configured():
+        return _unavailable("github")
     rec = current_auth(request)
     entry = rec.provider("github") if rec else None
     if entry is None:
@@ -907,7 +928,7 @@ def _atlassian_scope() -> str:
 @app.get("/auth/atlassian/login")
 async def atlassian_login(request: Request, return_to: str = "/"):
     if not _atlassian_oauth_configured():
-        return PlainTextResponse("Atlassian login is not configured.", status_code=503)
+        return _unavailable("atlassian")
     rec = current_auth(request) or auth.create_auth()
     state = auth.new_state(rec, "atlassian", _safe_return_to(return_to))
     params = {
@@ -927,6 +948,8 @@ async def atlassian_login(request: Request, return_to: str = "/"):
 @app.get("/auth/atlassian/callback")
 async def atlassian_callback(request: Request, code: str = "", state: str = "",
                              error: str = ""):
+    if not _atlassian_oauth_configured():
+        return _unavailable("atlassian")
     rec = current_auth(request)
     if rec is None:
         return PlainTextResponse("Auth session expired; please log in again.",
@@ -1032,6 +1055,8 @@ def _jira_summary(s) -> str:
 async def jira_projects(request: Request, sid: str = ""):
     """The connected user's projects + issue-type options as the export form.
     401 (not signed in / refresh failed) renders the re-authorize modal."""
+    if not _atlassian_oauth_configured():
+        return _unavailable("atlassian")
     rec = current_auth(request)
     try:
         entry = await refresh_atlassian_token(rec)
@@ -1056,6 +1081,8 @@ async def jira_projects(request: Request, sid: str = ""):
 @app.post("/api/jira/export", response_class=HTMLResponse)
 async def jira_export(request: Request, sid: str = Form(...),
                       project_key: str = Form(...), issue_type: str = Form("Task")):
+    if not _atlassian_oauth_configured():
+        return _unavailable("atlassian")
     s = state.get(sid)
     if s is None:
         return _render("partials/jira_result.html", request, ok=False,

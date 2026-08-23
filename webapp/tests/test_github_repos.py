@@ -118,7 +118,10 @@ def test_list_private_repos_retry_exhausted_propagates():
 # --- /api/github/repos route ------------------------------------------------
 
 def _authed_client(monkeypatch, token="gho_secret"):
+    # Credentials present and the flag left unset, i.e. the GitHub integration
+    # resolves to available (see app/integrations.py).
     monkeypatch.setattr(config, "GITHUB_OAUTH_CLIENT_ID", "test-client-id")
+    monkeypatch.setattr(config, "GITHUB_OAUTH_CLIENT_SECRET", "test-client-secret")
     monkeypatch.setattr(config, "COOKIE_SECURE", False)
     rec = auth.create_auth()
     auth.set_provider(rec, "github", access_token=token, user_login="octocat",
@@ -130,6 +133,7 @@ def _authed_client(monkeypatch, token="gho_secret"):
 
 def test_repos_route_unauthenticated_returns_401(monkeypatch):
     monkeypatch.setattr(config, "GITHUB_OAUTH_CLIENT_ID", "test-client-id")
+    monkeypatch.setattr(config, "GITHUB_OAUTH_CLIENT_SECRET", "test-client-secret")
     c = TestClient(main.app)  # no auth cookie
     resp = c.get("/api/github/repos")
     assert resp.status_code == 401

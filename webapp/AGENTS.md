@@ -47,6 +47,14 @@ Those seed the runtime settings in `app/settings.py`, which the UI can override 
 persists to `.promptgen.json` (gitignored, CWD-relative). Container CMD runs
 uvicorn on `:8000`.
 
+Third-party integrations (GitHub, Atlassian/Jira, and the OpenProject
+placeholder) are switched on with `INCIPIT_<NAME>_ENABLED`. Never test a flag or
+a credential directly in a route or a template — ask `app/integrations.py`
+(`available(name)`), which is the single place that combines "operator enabled
+it" with "credentials are present". These flags are deliberately env/Doppler
+only and are **not** in the runtime settings panel: enabling an OAuth
+integration is a deployment decision, not a per-session UI toggle.
+
 ### Container build / deploy
 
 `podman build` (from `webapp/`, which is the build context) → `podman save`

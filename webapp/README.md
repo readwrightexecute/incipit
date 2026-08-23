@@ -96,6 +96,41 @@ The app has no login of its own — run it on localhost or a trusted network. Th
 optional **"Login with GitHub"** flow (see below) is a per-user OAuth grant used
 only to read your private repos for grounding; it does not gate the app.
 
+### Turning integrations on and off
+
+Each third-party integration has an explicit switch, so a deployment decides
+what exists from config (env or Doppler) rather than it being an implicit side
+effect of which secrets happen to be set:
+
+| Env var / Doppler secret | Integration | Default |
+|---|---|---|
+| `INCIPIT_GITHUB_ENABLED` | Login with GitHub (private-repo grounding) | _(unset — see below)_ |
+| `INCIPIT_ATLASSIAN_ENABLED` | Sign in with Atlassian + Jira export | _(unset — see below)_ |
+| `INCIPIT_OPENPROJECT_ENABLED` | OpenProject — **placeholder, no client yet** | _(unset → off)_ |
+
+The flags are tri-state on purpose. **Leaving one unset** keeps the behaviour
+that predates them: the integration is on exactly when its credentials are
+configured, so an existing deployment is unaffected by this upgrade. Setting it
+**`true`** turns the integration on explicitly, and setting it **`false`** turns
+it off even when the credentials are present — which is the point: a shared
+Doppler config can carry the OAuth secrets while one environment still hides the
+feature.
+
+A flag is never sufficient on its own. An integration is offered only when it is
+enabled **and** its credentials are present; if you enable one without them, the
+app logs an actionable warning at startup naming the flag and the missing
+variables, and the integration stays unavailable rather than failing at the
+first click. Routes answer `503` and the UI hides the buttons. `GET /healthz`
+reports the resolved `enabled` / `configured` / `available` state of each one.
+
+These flags are **env/Doppler only** and are intentionally absent from the ⚙
+settings panel: enabling an OAuth integration is a deployment decision, not
+something a browser session should be able to switch on.
+
+`INCIPIT_OPENPROJECT_ENABLED` exists so a deployment can be configured ahead of
+the code. There is no OpenProject client yet, so the integration reports itself
+unavailable even when the flag is on.
+
 ### Optional: Login with GitHub (private-repo grounding)
 
 For existing-codebase specs you can sign in with GitHub so the wizard can read
@@ -113,7 +148,8 @@ session id (`HttpOnly` + `Secure` + `SameSite=Lax`). Configure the OAuth app:
 | `INCIPIT_COOKIE_SECURE` | Set the cookie `Secure` flag (default `true`; set `false` for local plain HTTP) |
 
 Token issuance/revocation is recorded on the `promptgen.audit` logger (no
-tokens are ever logged). Leave the client id/secret blank to disable the button.
+tokens are ever logged). Set `INCIPIT_GITHUB_ENABLED=false` — or leave the
+client id/secret blank — to disable the button.
 
 ### Optional: Sign in with Atlassian (Jira export)
 
@@ -136,9 +172,10 @@ opaque signed session id, and the token is auto-refreshed before it lapses.
 | `INCIPIT_JIRA_DEFAULT_PROJECT_KEY` | Optional project key to pre-select |
 | `INCIPIT_JIRA_EXPORT_TIMEOUT` | End-to-end export budget in ms (default `4000`) |
 
-Export events are recorded on the `promptgen.audit` logger. Leave the Atlassian
-client id/secret blank to hide the button. **`INCIPIT_ATLASSIAN_OAUTH_CLIENT_SECRET`
-must be supplied via env/Doppler** for the export flow to work.
+Export events are recorded on the `promptgen.audit` logger. Set
+`INCIPIT_ATLASSIAN_ENABLED=false` — or leave the Atlassian client id/secret
+blank — to hide the button. **`INCIPIT_ATLASSIAN_OAUTH_CLIENT_SECRET` must be
+supplied via env/Doppler** for the export flow to work.
 
 ### All environment variables
 
@@ -172,6 +209,9 @@ are flagged — never commit them.
 | `INCIPIT_FIRECRAWL_URL` | Firecrawl base URL for non-GitHub repo scraping | _(empty)_ |
 | `INCIPIT_REPO_TIMEOUT` | Repo-fetch HTTP timeout (s) | `25` |
 | `INCIPIT_REPO_CONTEXT_MAX` | Max chars of repo context injected into prompts | `6000` |
+| `INCIPIT_GITHUB_ENABLED` | Enable the GitHub integration (unset → on iff its credentials are set) | _(unset)_ |
+| `INCIPIT_ATLASSIAN_ENABLED` | Enable the Atlassian/Jira integration (unset → on iff its credentials are set) | _(unset)_ |
+| `INCIPIT_OPENPROJECT_ENABLED` | Enable the OpenProject integration (placeholder — no client yet) | _(unset → off)_ |
 | `INCIPIT_GITHUB_OAUTH_CLIENT_ID` | GitHub OAuth app client id (public) | _(built-in default)_ |
 | `INCIPIT_GITHUB_OAUTH_CLIENT_SECRET` | GitHub OAuth app client secret (**secret**) | _(empty)_ |
 | `INCIPIT_GITHUB_OAUTH_REDIRECT_URL` | GitHub OAuth callback URL | `https://incipit.nexus.inmotionhosting.com/auth/github/callback` |
@@ -206,7 +246,8 @@ to a model/subprocess and aren't covered by the offline suite, so a 90% gate
 over all of `app` is impractical. The auth + export **routes** live in
 `app/main.py` alongside every wizard route (so they can't be isolated per-file
 by coverage), but they are covered by `tests/test_auth.py`,
-`tests/test_jira_auth.py`, and `tests/test_jira_export.py`.
+`tests/test_jira_auth.py`, `tests/test_jira_export.py`, and — for the
+integration enable flags — `tests/test_integrations.py`.
 
 There is no build step or linter. For a fast dev loop, point the app at any
 running endpoint and run `uvicorn` as above.

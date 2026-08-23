@@ -116,7 +116,10 @@ def test_browse_url():
 # --- routes ------------------------------------------------------------------
 
 def _atlassian_client(monkeypatch, *, expires_in=3600, refresh="rt"):
+    # Credentials present and the flag left unset, i.e. the Atlassian
+    # integration resolves to available (see app/integrations.py).
     monkeypatch.setattr(config, "ATLASSIAN_OAUTH_CLIENT_ID", "test-atl-id")
+    monkeypatch.setattr(config, "ATLASSIAN_OAUTH_CLIENT_SECRET", "test-atl-secret")
     monkeypatch.setattr(config, "COOKIE_SECURE", False)
     rec = auth.create_auth()
     auth.set_provider(rec, "atlassian", access_token="atl-tok", refresh_token=refresh,
@@ -154,6 +157,7 @@ def test_final_page_places_atlassian_login_in_fixed_action_bar(monkeypatch):
 
 def test_projects_route_unauthenticated_returns_401(monkeypatch):
     monkeypatch.setattr(config, "ATLASSIAN_OAUTH_CLIENT_ID", "test-atl-id")
+    monkeypatch.setattr(config, "ATLASSIAN_OAUTH_CLIENT_SECRET", "test-atl-secret")
     c = TestClient(main.app)  # no auth cookie
     resp = c.get("/api/jira/projects")
     assert resp.status_code == 401
@@ -218,6 +222,7 @@ def test_export_reports_attachment_failure_but_succeeds(monkeypatch):
 
 def test_export_unauthenticated_returns_401(monkeypatch):
     monkeypatch.setattr(config, "ATLASSIAN_OAUTH_CLIENT_ID", "test-atl-id")
+    monkeypatch.setattr(config, "ATLASSIAN_OAUTH_CLIENT_SECRET", "test-atl-secret")
     c = TestClient(main.app)
     s = _final_session()
     resp = c.post("/api/jira/export",
