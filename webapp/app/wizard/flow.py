@@ -122,7 +122,7 @@ async def _with_status(s: Session, label: str, coro):
         await _emit(s, "progress", "")
 
 
-async def _generate(s: Session, prompt: str, max_tokens: int = 2048,
+async def _generate(s: Session, prompt: str, max_tokens: int = 4000,
                     label: str = "Working") -> str:
     """One LLM call with a contextual progress/model-loading heartbeat."""
     return await _with_status(
@@ -396,7 +396,7 @@ async def _persona_turn(s: Session, p: dict, spec: str, focus: str = "",
         spec=spec, transcript=_party_transcript(s), focus=focus.strip(),
         idea=s.idea,
     )
-    text = await _party_gen(prompt, max_tokens=512)
+    text = await _party_gen(prompt, max_tokens=1536)
     await _say(s, PartyMessage(p["id"], p["name"], p["emoji"], p["role"], text, "persona"))
     await _emit(s, "party_turn", "")
 
@@ -429,7 +429,7 @@ async def _facilitator_turn(s: Session, spec: str,
         voice=FACILITATOR["voice"].strip(), spec=spec,
         transcript=_party_transcript(s), personas=PERSONAS, idea=s.idea,
     )
-    raw = await _party_gen(prompt, max_tokens=400)
+    raw = await _party_gen(prompt, max_tokens=1280)
     say, action, next_ids = _parse_facilitator(raw)
     await _say(s, PartyMessage(FACILITATOR["id"], FACILITATOR["name"], FACILITATOR["emoji"],
                                FACILITATOR["role"], say or raw, "facilitator"))
@@ -533,7 +533,7 @@ async def run_party(s: Session, *, auto_apply: bool = False) -> None:
             voice=FACILITATOR["voice"].strip(), spec=spec,
             transcript=_party_transcript(s), sections=s.sections,
         )
-        raw = await _party_gen(prompt, max_tokens=1200)
+        raw = await _party_gen(prompt, max_tokens=3200)
         s.party_changes = _parse_changes(s, raw)
         s.party_status = "ready"
         await _emit(s, "party_turn", "")
@@ -654,7 +654,7 @@ async def run_party_questions(s: Session) -> None:
             voice=FACILITATOR["voice"].strip(), spec=subject,
             transcript=_party_transcript(s), idea=s.idea, n_qas=len(s.qas),
         )
-        raw = await _party_gen(prompt, max_tokens=1200)
+        raw = await _party_gen(prompt, max_tokens=3200)
         s.party_qa_changes = _parse_qa_changes(s, raw)
         s.party_status = "ready"
         await _emit(s, "party_turn", "")
