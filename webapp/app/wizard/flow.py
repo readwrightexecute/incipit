@@ -712,7 +712,7 @@ async def _infer_calibration(s: Session) -> tuple[str, str, str]:
         # model switch lands — wrap it in the heartbeat so the status bar shows
         # the "loading model" graphic instead of nothing.
         raw = await _with_status(
-            s, "Reading your idea", _party_gen(prompt, max_tokens=48))
+            s, "Reading your idea", _party_gen(prompt, max_tokens=512))
     except Exception:
         return stakes, form_factor, project_type
     for ln in raw.splitlines():
