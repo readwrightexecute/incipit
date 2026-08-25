@@ -197,7 +197,7 @@ async def run_clarify(s: Session) -> None:
         await _ensure_repo_context(s)
         tmpl = _jinja.get_template("clarify.md.j2")
         prompt = tmpl.render(n_questions=N_QUESTIONS.get(s.stakes, 6), **_ctx(s))
-        text = await _generate(s, prompt, max_tokens=1536,
+        text = await _generate(s, prompt, max_tokens=4000,
                                label="Thinking up the right questions")
         s.qas = parse_questions(text)
         if not s.qas:
