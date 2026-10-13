@@ -1143,6 +1143,7 @@ async def _export_to_jira(cloud_id, token, site_url, project_key, summary,
             "summary": story.summary,
         })
         remaining = deadline - loop.time()
+    remaining = deadline - loop.time()
     attached = True
     if remaining >= 0.5:
         try:
