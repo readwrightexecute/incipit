@@ -3,7 +3,7 @@ spec drafting can be grounded in the real codebase.
 
 Strategy: GitHub REST first (public repos, no auth needed; optional
 `INCIPIT_GITHUB_TOKEN` lifts the anonymous rate limit). For non-GitHub hosts
-or API failures, fall back to homelab Firecrawl (`INCIPIT_FIRECRAWL_URL`) to
+or API failures, fall back to configured Firecrawl (`INCIPIT_FIRECRAWL_URL`) to
 scrape the repo page. Best-effort throughout — a fetch failure never blocks
 drafting; it returns a short note instead.
 """
@@ -20,7 +20,7 @@ import httpx
 
 from app import config
 
-log = logging.getLogger("promptgen.repo")
+log = logging.getLogger("incipit.repo")
 
 # owner/repo from https://github.com/owner/repo(.git)(/...) or git@github.com:owner/repo
 _GITHUB_RE = re.compile(r"github\.com[/:]+([^/\s]+)/([^/\s#?]+)", re.I)
@@ -167,7 +167,7 @@ async def _repos_request(c: httpx.AsyncClient, url: str, params: dict) -> list:
 
 
 async def _github(owner: str, repo: str, token: str = "") -> str:
-    headers = {"Accept": "application/vnd.github+json", "User-Agent": "promptgen"}
+    headers = {"Accept": "application/vnd.github+json", "User-Agent": "incipit"}
     # A per-user OAuth token (private-repo grounding) takes precedence over the
     # optional anonymous-rate-limit token from config.
     auth_token = token or config.GITHUB_TOKEN

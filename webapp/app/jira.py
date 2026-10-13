@@ -13,7 +13,7 @@ import httpx
 
 from app import config
 
-log = logging.getLogger("promptgen.jira")
+log = logging.getLogger("incipit.jira")
 
 API_BASE = "https://api.atlassian.com/ex/jira"
 _PROJECT_PAGE = 50

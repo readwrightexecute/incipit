@@ -24,9 +24,9 @@ from app.llm.base import GenerationError
 from app.wizard import flow, state
 
 logging.basicConfig(level=logging.INFO)
-log = logging.getLogger("promptgen")
+log = logging.getLogger("incipit")
 
-app = FastAPI(title="promptgen")
+app = FastAPI(title="incipit")
 _here = Path(__file__).parent
 app.mount("/static", StaticFiles(directory=_here / "static"), name="static")
 templates = Jinja2Templates(directory=_here / "templates")

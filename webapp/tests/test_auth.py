@@ -93,7 +93,7 @@ def test_callback_exchanges_code_and_stores_token_server_side(client, caplog):
         return_value=httpx.Response(200, json={"login": "octocat", "id": 583231}))
 
     _, state = _start_login(client)
-    with caplog.at_level(logging.INFO, logger="promptgen.audit"):
+    with caplog.at_level(logging.INFO, logger="incipit.audit"):
         resp = client.get(f"/auth/github/callback?code=abc123&state={state}",
                           follow_redirects=False)
 
@@ -177,7 +177,7 @@ def test_logout_revokes_only_github_and_keeps_shared_cookie(client, caplog):
     assert rec.provider("github") is not None
     auth.set_provider(rec, "atlassian", access_token="atl", refresh_token="refresh")
 
-    with caplog.at_level(logging.INFO, logger="promptgen.audit"):
+    with caplog.at_level(logging.INFO, logger="incipit.audit"):
         resp = client.post("/auth/github/logout")
 
     assert resp.status_code == 204

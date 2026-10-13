@@ -1,6 +1,6 @@
 # DiffusionGemma on 2 GPUs in llama.cpp: re-enabling the three optimizations PR #24423 turns off
 
-**TL;DR:** llama.cpp's DiffusionGemma PR ([#24423](https://github.com/ggml-org/llama.cpp/pull/24423)) silently disables its prompt-KV cache, device-resident self-conditioning, and GPU sampling whenever the model spans more than one CUDA device. We patched all three to be multi-GPU aware on a 2× RTX 5060 Ti (16GB) homelab box: **flat ~233ms/step regardless of context length**, vs 335ms/step degrading to 542ms/step stock, vs ~1200ms/step on a single 16GB card with CPU MoE offload. Correctness verified bit-exact with the PR's own debug validators. Patch below; not submitted upstream (see disclosure).
+**TL;DR:** llama.cpp's DiffusionGemma PR ([#24423](https://github.com/ggml-org/llama.cpp/pull/24423)) silently disables its prompt-KV cache, device-resident self-conditioning, and GPU sampling whenever the model spans more than one CUDA device. We patched all three to be multi-GPU aware on a 2× RTX 5060 Ti (16GB) test box: **flat ~233ms/step regardless of context length**, vs 335ms/step degrading to 542ms/step stock, vs ~1200ms/step on a single 16GB card with CPU MoE offload. Correctness verified bit-exact with the PR's own debug validators. Patch below; not submitted upstream (see disclosure).
 
 ## Setup
 
@@ -59,6 +59,6 @@ The headline isn't just the 1.5× on short prompts — it's that step time stops
 
 ## Disclosure & why this isn't a PR
 
-This patch was developed by an AI coding agent (Claude Fable 5, via Claude Code) working in a homelab, directed and tested by a human. llama.cpp's contribution policy prohibits predominantly AI-generated PRs and instructs autonomous agents not to submit — so this stays a private carried patch, published here as findings. If the PR author or any human contributor wants to reimplement these changes with full understanding (the per-buft KV map is even pre-described in their own code comment), everything needed is in this writeup and the diff. Related known issue: a commenter on #24423 already reported device sampling silently disabling on multi-GPU setups.
+This patch was developed by an AI coding agent (Claude Fable 5, via Claude Code) in a private test environment, directed and tested by a human. llama.cpp's contribution policy prohibits predominantly AI-generated PRs and instructs autonomous agents not to submit — so this stays a private carried patch, published here as findings. If the PR author or any human contributor wants to reimplement these changes with full understanding (the per-buft KV map is even pre-described in their own code comment), everything needed is in this writeup and the diff. Related known issue: a commenter on #24423 already reported device sampling silently disabling on multi-GPU setups.
 
 Patch: `multi-gpu-diffusion.patch` (318 lines, applies clean on `10a2613a`).

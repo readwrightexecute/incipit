@@ -14,7 +14,7 @@ import httpx
 from app import config, settings
 from app.llm.base import GenerationError
 
-log = logging.getLogger("promptgen.openai")
+log = logging.getLogger("incipit.openai")
 
 
 class OpenAIBackend:

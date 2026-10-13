@@ -15,7 +15,7 @@ from app.llm.base import GenerationError, get_backend
 from app.wizard import state
 from app.wizard.state import QA, PartyChange, PartyMessage, PartyQAChange, Section, Session
 
-log = logging.getLogger("promptgen.flow")
+log = logging.getLogger("incipit.flow")
 
 _here = Path(__file__).parent
 _jinja = Environment(loader=FileSystemLoader(_here / "prompts"), autoescape=False)

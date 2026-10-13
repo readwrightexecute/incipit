@@ -185,7 +185,7 @@ def test_export_creates_issue_attaches_and_confirms(monkeypatch, caplog):
     c = _atlassian_client(monkeypatch)
     s = _final_session()
 
-    with caplog.at_level(logging.INFO, logger="promptgen.audit"):
+    with caplog.at_level(logging.INFO, logger="incipit.audit"):
         resp = c.post("/api/jira/export",
                       data={"sid": s.id, "project_key": "ABC", "issue_type": "Task"})
 

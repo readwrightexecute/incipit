@@ -106,7 +106,7 @@ def test_callback_stores_token_cloudid_and_redirects(client, caplog):
             "name": "Acme", "scopes": ["read:jira-work"]}]))
 
     _, state = _start_login(client, return_to="/sessions/xyz")
-    with caplog.at_level(logging.INFO, logger="promptgen.audit"):
+    with caplog.at_level(logging.INFO, logger="incipit.audit"):
         resp = client.get(f"/auth/atlassian/callback?code=abc123&state={state}",
                           follow_redirects=False)
 
@@ -251,7 +251,7 @@ def test_refresh_mints_new_token_and_audits(client, caplog):
             "access_token": "fresh", "refresh_token": "rt2",
             "expires_in": 3600, "scope": "read:jira-work"}))
     rec = _rec_with_atlassian()  # already expired
-    with caplog.at_level(logging.INFO, logger="promptgen.audit"):
+    with caplog.at_level(logging.INFO, logger="incipit.audit"):
         entry = _run(main.refresh_atlassian_token(rec))
     assert route.called
     sent = json.loads(route.calls[0].request.content.decode())
@@ -308,7 +308,7 @@ def test_logout_revokes_and_audits(client, caplog):
     sid = _sid_from_jar(client)
     assert auth.get_auth(sid).provider("atlassian") is not None
 
-    with caplog.at_level(logging.INFO, logger="promptgen.audit"):
+    with caplog.at_level(logging.INFO, logger="incipit.audit"):
         resp = client.post("/auth/atlassian/logout")
 
     assert resp.status_code == 204
