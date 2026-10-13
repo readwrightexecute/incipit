@@ -81,6 +81,7 @@ async def list_projects(cloud_id: str, token: str, *,
 
 async def create_issue(cloud_id: str, token: str, *, project_key: str,
                        summary: str, issue_type: str, description_adf: dict,
+                       parent_key: str | None = None,
                        timeout: float | None = None) -> dict:
     """Create an issue with an ADF description. Returns {key, id}. Raises
     JiraError on a non-2xx response."""
@@ -91,6 +92,8 @@ async def create_issue(cloud_id: str, token: str, *, project_key: str,
         "issuetype": {"name": issue_type},
         "description": description_adf,
     }}
+    if parent_key:
+        payload["fields"]["parent"] = {"key": parent_key}
     headers = {**_headers(token), "Content-Type": "application/json"}
     try:
         async with httpx.AsyncClient(timeout=_timeout(timeout), headers=headers) as c:

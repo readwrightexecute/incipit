@@ -5,6 +5,7 @@ import asyncio
 import html
 import logging
 import re
+from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
@@ -885,8 +886,16 @@ def _criteria_for_requirement(requirement_id: str, criteria: list[str]) -> list[
     return matched
 
 
-def assemble_jira_export(s: Session) -> str:
-    """Build a generic Jira-friendly markdown export without calling Jira."""
+@dataclass(frozen=True)
+class JiraStoryDraft:
+    key: str
+    summary: str
+    description: str
+    acceptance_criteria: list[str]
+
+
+def jira_story_drafts(s: Session) -> list[JiraStoryDraft]:
+    """Extract the child stories that belong under the Jira Epic export."""
     req_section = _matching_section(s, "functional_requirements", "functional requirements",
                                     "requirements")
     ac_section = _matching_section(s, "acceptance_criteria", "acceptance criteria")
@@ -897,6 +906,48 @@ def assemble_jira_export(s: Session) -> str:
     if ac_section and not criteria:
         criteria = _plain_blocks(ac_section.content)
 
+    if requirements:
+        return [
+            JiraStoryDraft(
+                key=req_id,
+                summary=req_text,
+                description=req_text,
+                acceptance_criteria=_criteria_for_requirement(req_id, criteria),
+            )
+            for req_id, req_text in requirements
+        ]
+
+    overview = _matching_section(s, "goals", "overview", "background")
+    description = overview.content if overview and overview.content else assemble_final(s)
+    return [JiraStoryDraft(
+        key="1",
+        summary=s.idea,
+        description=description,
+        acceptance_criteria=criteria,
+    )]
+
+
+def jira_unmatched_acceptance_criteria(s: Session) -> list[str]:
+    req_section = _matching_section(s, "functional_requirements", "functional requirements",
+                                    "requirements")
+    ac_section = _matching_section(s, "acceptance_criteria", "acceptance criteria")
+    requirements = _labeled_blocks(req_section.content, _FR_RE) if req_section else []
+    criteria = [
+        f"{label}: {text}" for label, text in _labeled_blocks(ac_section.content, _AC_RE)
+    ] if ac_section else []
+    if ac_section and not criteria:
+        criteria = _plain_blocks(ac_section.content)
+    if not requirements:
+        return []
+    requirement_ids = {_normalize_req_id(req_id) for req_id, _ in requirements}
+    return [
+        criterion for criterion in criteria
+        if not (_referenced_req_ids(criterion) & requirement_ids)
+    ]
+
+
+def assemble_jira_export(s: Session) -> str:
+    """Build a generic Jira-friendly markdown export without calling Jira."""
     parts = [
         "# Jira Export",
         "",
@@ -913,46 +964,24 @@ def assemble_jira_export(s: Session) -> str:
         parts.append(f"**Existing repository:** {s.repo_url}")
     parts += ["", "## Stories", ""]
 
-    if requirements:
-        requirement_ids = {_normalize_req_id(req_id) for req_id, _ in requirements}
-        for req_id, req_text in requirements:
-            matched = _criteria_for_requirement(req_id, criteria)
-            parts += [
-                f"### Story {req_id}",
-                "",
-                f"**Summary:** {req_text}",
-                "",
-                "**Description:**",
-                req_text,
-                "",
-            ]
-            if matched:
-                parts += ["**Acceptance Criteria:**", ""]
-                parts += [f"- {criterion}" for criterion in matched]
-                parts.append("")
-        remaining_criteria = [
-            criterion for criterion in criteria
-            if not (_referenced_req_ids(criterion) & requirement_ids)
-        ]
-        if remaining_criteria:
-            parts += ["### Unmatched Acceptance Criteria", ""]
-            parts += [f"- {criterion}" for criterion in remaining_criteria]
-            parts.append("")
-    else:
-        overview = _matching_section(s, "goals", "overview", "background")
-        description = overview.content if overview and overview.content else assemble_final(s)
+    for story in jira_story_drafts(s):
         parts += [
-            "### Story 1",
+            f"### Story {story.key}",
             "",
-            f"**Summary:** {s.idea}",
+            f"**Summary:** {story.summary}",
             "",
             "**Description:**",
-            description,
+            story.description,
             "",
         ]
-        if criteria:
+        if story.acceptance_criteria:
             parts += ["**Acceptance Criteria:**", ""]
-            parts += [f"- {criterion}" for criterion in criteria]
+            parts += [f"- {criterion}" for criterion in story.acceptance_criteria]
             parts.append("")
+    remaining_criteria = jira_unmatched_acceptance_criteria(s)
+    if remaining_criteria:
+        parts += ["### Unmatched Acceptance Criteria", ""]
+        parts += [f"- {criterion}" for criterion in remaining_criteria]
+        parts.append("")
 
     return "\n".join(parts).rstrip() + "\n"

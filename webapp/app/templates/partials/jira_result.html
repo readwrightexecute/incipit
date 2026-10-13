@@ -1,8 +1,17 @@
 {% if ok %}
-<p class="jira-result ok">✓ Created
+<p class="jira-result ok">✓ Created Epic
   <a href="{{ url }}" target="_blank" rel="noopener noreferrer">{{ key }}</a>
-  {% if attached %}with the mega-prompt attached as <code>mega-prompt.md</code>.{% else %}— attaching the <code>.md</code> failed, but the full brief is in the issue description.{% endif %}
+  {% if stories %}with {{ stories|length }} child stor{% if stories|length == 1 %}y{% else %}ies{% endif %}.{% endif %}
+  {% if failed_stories %}{{ failed_stories }} child stor{% if failed_stories == 1 %}y{% else %}ies{% endif %} failed; check Jira before retrying to avoid duplicates.{% endif %}
+  {% if attached %}The mega-prompt is attached as <code>mega-prompt.md</code>.{% else %}Attaching the <code>.md</code> failed, but the full brief is in the issue description.{% endif %}
 </p>
+{% if stories %}
+<ul class="jira-story-list">
+  {% for story in stories %}
+  <li><a href="{{ story.url }}" target="_blank" rel="noopener noreferrer">{{ story.key }}</a> {{ story.summary }}</li>
+  {% endfor %}
+</ul>
+{% endif %}
 {% else %}
 <p class="jira-result error">✗ {{ message }}</p>
 {% endif %}

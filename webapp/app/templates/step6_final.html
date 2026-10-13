@@ -12,7 +12,6 @@
     {% endif %}
     <a href="/" role="button" class="contrast outline">New session</a>
   </div>
-  <div class="section-content" id="mega-prompt">{{ mega_prompt }}</div>
 
   {% if atlassian_configured %}
   <div id="jira-export" class="jira-export">
@@ -30,13 +29,15 @@
           <span class="spinner" data-anim="pulse" aria-hidden="true"></span></p>
       </div>
     {% else %}
-      <p class="jira-hint">Sign in with your own Atlassian account to push this brief into a Jira issue.</p>
+      <p class="jira-hint">Sign in with your own Atlassian account to create a Jira Epic with child Stories.</p>
       {% if atlassian_error %}
       <p class="error" role="alert">{{ atlassian_error }} Please try again.</p>
       {% endif %}
     {% endif %}
   </div>
   {% endif %}
+
+  <div class="section-content" id="mega-prompt">{{ mega_prompt }}</div>
 </div>
 <script>
 function copyPrompt() {
