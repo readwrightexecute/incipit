@@ -403,3 +403,135 @@ def test_assemble_final_standards_section_relates_to_existing_repository():
     assert out.index(repo_line) < standards_index
     assert "current codebase" in out[standards_index:]
     assert "repository guidance" in out[standards_index:].lower()
+
+
+# --- assemble_jira_export ---------------------------------------------------
+
+def test_assemble_jira_export_groups_functional_requirements_into_stories():
+    s = _session(
+        idea="Launch partner onboarding",
+        project_type="existing",
+        stakes="serious",
+        form_factor="web app",
+        repo_url="https://github.com/acme/portal",
+        sections=[
+            Section(
+                id="requirements",
+                title="Functional Requirements",
+                instruction="",
+                content=(
+                    "FR1: Partners can submit onboarding applications.\n"
+                    "FR-2: Staff can approve or reject applications.\n"
+                ),
+            ),
+            Section(
+                id="acceptance",
+                title="Acceptance Criteria",
+                instruction="",
+                content=(
+                    "AC-FR1: Given a partner application, when it is submitted, "
+                    "then staff can review it.\n"
+                    "AC-FR-2: Given a pending application, when staff approves it, "
+                    "then the partner is activated.\n"
+                    "AC-EDGE: The export preserves criteria that do not map to a "
+                    "functional requirement.\n"
+                ),
+            ),
+        ],
+    )
+
+    out = flow.assemble_jira_export(s)
+
+    assert out.startswith("# Jira Export")
+    assert "## Epic" in out
+    assert "Launch partner onboarding" in out
+    assert "**Project type:** existing" in out
+    assert "**Existing repository:** https://github.com/acme/portal" in out
+    assert "## Stories" in out
+    assert "### Story FR1" in out
+    assert "Partners can submit onboarding applications." in out
+    assert "AC-FR1: Given a partner application" in out
+    assert "### Story FR-2" in out
+    assert "Staff can approve or reject applications." in out
+    assert "AC-FR-2: Given a pending application" in out
+    assert "### Unmatched Acceptance Criteria" in out
+    assert "AC-EDGE: The export preserves criteria" in out
+
+    assert out.index("### Story FR1") < out.index("AC-FR1:")
+    assert out.index("AC-FR1:") < out.index("### Story FR-2")
+    assert out.index("### Story FR-2") < out.index("AC-FR-2:")
+    assert out.index("AC-FR-2:") < out.index("### Unmatched Acceptance Criteria")
+
+
+def test_assemble_jira_export_parses_bold_markdown_requirement_and_criteria_labels():
+    s = _session(
+        idea="Improve billing alerts",
+        project_type="new",
+        stakes="internal",
+        form_factor="API/service",
+        sections=[
+            Section(
+                id="functional_requirements",
+                title="Functional Requirements",
+                instruction="",
+                content=(
+                    "1. **FR1:** Users can configure billing alert thresholds.\n"
+                    "- **FR-2:** Users can preview who will receive an alert.\n"
+                ),
+            ),
+            Section(
+                id="acceptance_criteria",
+                title="Acceptance Criteria",
+                instruction="",
+                content=(
+                    "- **AC-FR1:** Given a threshold, when saved, then it is applied.\n"
+                    "1. **AC-FR-2:** Given recipients, when previewed, then the list is shown.\n"
+                ),
+            ),
+        ],
+    )
+
+    out = flow.assemble_jira_export(s)
+
+    assert "### Story FR1" in out
+    assert "Users can configure billing alert thresholds." in out
+    assert "AC-FR1: Given a threshold" in out
+    assert "### Story FR-2" in out
+    assert "Users can preview who will receive an alert." in out
+    assert "AC-FR-2: Given recipients" in out
+    assert "**FR1:**" not in out
+    assert "**AC-FR1:**" not in out
+
+
+def test_assemble_jira_export_uses_single_fallback_story_without_requirements():
+    s = _session(
+        idea="Improve account audit logging",
+        project_type="new",
+        stakes="internal",
+        form_factor="API/service",
+        sections=[
+            Section(
+                id="overview",
+                title="Project Overview",
+                instruction="",
+                content="Add durable audit events for account mutations.",
+            ),
+            Section(
+                id="acceptance",
+                title="Acceptance Criteria",
+                instruction="",
+                content="AC1: Audit events include actor, target account, and timestamp.",
+            ),
+        ],
+    )
+
+    out = flow.assemble_jira_export(s)
+
+    assert out.startswith("# Jira Export")
+    assert "## Epic" in out
+    assert "## Stories" in out
+    assert "### Story 1" in out
+    assert "Improve account audit logging" in out
+    assert "Add durable audit events for account mutations." in out
+    assert "AC1: Audit events include actor, target account, and timestamp." in out
+    assert "### Story FR" not in out

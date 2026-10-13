@@ -721,6 +721,18 @@ async def download(sid: str):
     )
 
 
+@app.get("/sessions/{sid}/download-jira.md")
+async def download_jira(sid: str):
+    s = state.get(sid)
+    if s is None:
+        return Response(status_code=404)
+    return PlainTextResponse(
+        flow.assemble_jira_export(s),
+        media_type="text/markdown",
+        headers={"Content-Disposition": 'attachment; filename="jira-export.md"'},
+    )
+
+
 # ---- GitHub OAuth login -----------------------------------------------------
 # Flow: /auth/github/login mints a session + CSRF state, sets the signed cookie,
 # and 302s to GitHub. GitHub redirects back to /auth/github/callback?code&state;
