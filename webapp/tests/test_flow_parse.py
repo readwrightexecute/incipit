@@ -357,3 +357,42 @@ def test_assemble_final_new_project_omits_repo_line():
     out = flow.assemble_final(s)
     # repo_url is set but project_type is "new", so the repo line is omitted.
     assert "Existing repository" not in out
+
+
+def test_assemble_final_includes_engineering_standards_section():
+    s = _session(
+        idea="X",
+        project_type="new",
+        stakes="serious",
+        form_factor="CLI tool",
+        sections=[],
+    )
+    out = flow.assemble_final(s)
+
+    assert "## Engineering Standards & Requirements" in out
+    section = out.split("## Engineering Standards & Requirements", 1)[1]
+    assert "AGENTS.md" in section
+    assert "CLAUDE.md" in section
+    assert "security" in section.lower()
+    assert "CI" in section
+    assert "test" in section.lower()
+    assert "issue-tracking" in section.lower()
+
+
+def test_assemble_final_standards_section_relates_to_existing_repository():
+    s = _session(
+        idea="X",
+        project_type="existing",
+        stakes="serious",
+        form_factor="CLI tool",
+        repo_url="https://github.com/owner/repo",
+        sections=[],
+    )
+    out = flow.assemble_final(s)
+    repo_line = "**Existing repository:** https://github.com/owner/repo"
+    standards_index = out.index("## Engineering Standards & Requirements")
+
+    assert repo_line in out
+    assert out.index(repo_line) < standards_index
+    assert "current codebase" in out[standards_index:]
+    assert "repository guidance" in out[standards_index:].lower()

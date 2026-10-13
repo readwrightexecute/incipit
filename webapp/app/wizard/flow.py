@@ -49,6 +49,20 @@ PROJECT_TYPE_HINTS = {
 }
 N_QUESTIONS = {"hobby": 5, "internal": 6, "serious": 8}
 
+ENGINEERING_STANDARDS_SECTION = """## Engineering Standards & Requirements
+
+- Follow repository guidance before changing code, including AGENTS.md,
+  CLAUDE.md, CONTRIBUTING.md, README files, and local docs when present.
+- For existing projects, fit the current codebase architecture and conventions;
+  prefer focused, additive changes unless the brief explicitly calls for a
+  larger migration.
+- Treat security requirements as binding: validate inputs, protect secrets,
+  preserve least-privilege access, and document any new trust boundaries.
+- Keep CI, automated tests, and quality checks green. Add or update tests for
+  changed behavior, and call out any meaningful test gaps.
+- Preserve the issue-tracking workflow by keeping implementation notes, review
+  evidence, and follow-up work traceable to the relevant ticket or issue."""
+
 backend = get_backend()
 SYSTEM = _jinja.get_template("system.md.j2").render().strip()
 
@@ -811,4 +825,5 @@ def assemble_final(s: Session) -> str:
     parts.append("")
     for sec in s.sections:
         parts += [f"## {sec.title}", "", sec.content, ""]
+    parts += [ENGINEERING_STANDARDS_SECTION, ""]
     return "\n".join(parts)
