@@ -1,10 +1,7 @@
-# promptgen — BMAD-style mega-prompt wizard backed by DiffusionGemma via llama.cpp PR #24423
+# incipit — BMAD-style mega-prompt wizard backed by DiffusionGemma via llama.cpp PR #24423
 #
 # Build (from this directory — the build context is webapp/):
-#   podman build -t localhost/promptgen:v3 .
-# Import into containerd (kubelet's namespace):
-#   podman save --format oci-archive -o /tmp/promptgen.tar localhost/promptgen:v1
-#   sudo ctr -n k8s.io images import /tmp/promptgen.tar
+#   podman build -t localhost/incipit:v3 .
 #
 # PR_SHA is the pinned head of https://github.com/ggml-org/llama.cpp/pull/24423
 # (draft PR, no llama-server support — we build llama-diffusion-cli only).

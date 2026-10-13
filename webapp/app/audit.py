@@ -1,7 +1,7 @@
 """Append-only audit log for OAuth token lifecycle events.
 
 There's no database (single-replica, in-memory app), so "audit table" is an
-append-only log line on the dedicated `promptgen.audit` logger (lowercase
+append-only log line on the dedicated `incipit.audit` logger (lowercase
 namespace, matching the rest of the app's loggers). Each record carries a
 timestamp, the action, the provider, and the provider account id so token
 issuance / revocation can be traced (AC8 / NFR3). No tokens or secrets are ever
@@ -11,7 +11,7 @@ logged.
 import logging
 import time
 
-log = logging.getLogger("promptgen.audit")
+log = logging.getLogger("incipit.audit")
 
 
 def _emit(action: str, provider: str, user_id: str = "", user_login: str = "",

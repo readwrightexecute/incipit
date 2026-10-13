@@ -15,7 +15,7 @@ from app import config
 from app.llm.base import GenerationError
 from app.llm.diffusion_cnv import clean_output
 
-log = logging.getLogger("promptgen.oneshot")
+log = logging.getLogger("incipit.oneshot")
 
 
 class DiffusionOneshotBackend:

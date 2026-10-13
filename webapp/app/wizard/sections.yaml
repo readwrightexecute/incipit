@@ -42,8 +42,9 @@ sections:
     instruction: >
       Write the acceptance criteria as a numbered list. Each criterion is a
       concrete, observable check in Given/When/Then form or "Done when ..."
-      form, mapped to the functional requirements. Include at least one
-      criterion for error/edge behavior. 5-10 criteria.
+      form, mapped to the functional requirements by citing the relevant FR id
+      (for example, "AC-FR3: ..."). Include at least one criterion for
+      error/edge behavior. 5-10 criteria.
 
   - id: out_of_scope
     title: Out of Scope

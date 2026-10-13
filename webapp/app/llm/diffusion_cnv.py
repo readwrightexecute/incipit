@@ -21,7 +21,7 @@ from collections import deque
 from app import config
 from app.llm.base import GenerationError
 
-log = logging.getLogger("promptgen.cnv")
+log = logging.getLogger("incipit.cnv")
 
 ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]|\x1b\][^\x07]*\x07|\x1b[()][0-9A-B]")
 TIMING_RE = re.compile(r"^(total time:|throughput:|conversation history cleared)", re.M)

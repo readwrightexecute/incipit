@@ -12,15 +12,14 @@ structured spec ("mega-prompt") to paste into a coding agent.
 
 **Default backend is `openai`** — any OpenAI-compatible `/v1` endpoint (Ollama,
 LM Studio, llama-server, vLLM, OpenAI). Endpoint/model/key are runtime-settable
-in the UI (⚙ Model settings) and persisted to `.promptgen.json`; see
+in the UI (⚙ Model settings) and persisted to `.incipit.json`; see
 `app/settings.py`. This is the public "bring your own model" path and runs on
 vanilla Python with no GPU.
 
 The **DiffusionGemma** backends (`diffusion-cnv` / `diffusion-oneshot`) are the
 opt-in advanced path: a GGUF model run through `llama-diffusion-cli` (llama.cpp
-PR #24423, no HTTP server — driven as a persistent `-cnv` subprocess). Used in
-the homelab deploy (single pod, `aistack` namespace, NodePort 30090). No auth by
-design — trusted LAN / localhost only.
+PR #24423, no HTTP server — driven as a persistent `-cnv` subprocess). No auth
+by design — trusted LAN / localhost only.
 
 ## Run & develop
 
@@ -44,19 +43,16 @@ python3 -m uvicorn app.main:app --port 8911
 
 Configuration is environment variables (`INCIPIT_*`) read in `app/config.py`.
 Those seed the runtime settings in `app/settings.py`, which the UI can override and
-persists to `.promptgen.json` (gitignored, CWD-relative). Container CMD runs
+persists to `.incipit.json` (gitignored, CWD-relative). Container CMD runs
 uvicorn on `:8000`.
 
-### Container build / deploy
+### Container build
 
-`podman build` (from `webapp/`, which is the build context) → `podman save`
-(oci-archive) → `sudo ctr -n k8s.io images import` → `kubectl apply -f
-~/homelab-gitops/apps/aistack/promptgen.yaml` (`imagePullPolicy: Never`). See
-`README.md` for exact commands. The Containerfile
-compiles `llama-diffusion-cli` from a **pinned** llama.cpp PR SHA (`PR_SHA`
-build arg) for Blackwell (sm_120, `CMAKE_CUDA_ARCHITECTURES=120`) and applies
-two carried patches (below). Re-pin the SHA deliberately; never build from the
-moving PR head, and re-run the README smoke test after a bump.
+Run `podman build` from `webapp/`, which is the build context. The Containerfile
+compiles `llama-diffusion-cli` from a **pinned** llama.cpp PR SHA (`PR_SHA` build
+arg) for Blackwell (sm_120, `CMAKE_CUDA_ARCHITECTURES=120`) and applies two
+carried patches (below). Re-pin the SHA deliberately; never build from the moving
+PR head, and re-run the README smoke test after a bump.
 
 ## Architecture
 
@@ -131,7 +127,7 @@ and never make the skills depend on this app.
   rather than parsing a fixed protocol.
 - **`diffusion-oneshot`** — one CLI process per call via `-f` file (full model
   reload each time). Fallback if the cnv stdin protocol breaks after a re-pin.
-- **`openai`** — any OpenAI-compatible endpoint (homelab llama-swap qwen).
+- **`openai`** — any OpenAI-compatible endpoint.
   Quality fallback + the fast local dev path.
 
 All diffusion output goes through `clean_output` (strip ANSI / resolve `\r`
@@ -160,12 +156,8 @@ policy forbids it):
    via the PR's `DG_SC_CHECK` / `DG_DEVSAMPLE_CHECK`. Background:
    `docs/multi-gpu-diffusiongemma.md`.
 
-## Homelab deployment constraints
+## Runtime constraints
 
-- Manifest lives in the **separate** gitops repo:
-  `~/homelab-gitops/apps/aistack/promptgen.yaml`.
-- **Mutually exclusive with a hot llama-swap model** on the same node — whichever
-  loads second OOMs. Both idle out after 10 min (or `GET /unload` on llama-swap).
 - Model runs fully in VRAM across both GPUs (`-ngl 99 -sm layer -ts 7,3`); `-n`
   is capped (n_ubatch growth drives reserve buffer size; too high OOMs).
 - `/healthz` must **not** touch the LLM — it reports cached backend status so the

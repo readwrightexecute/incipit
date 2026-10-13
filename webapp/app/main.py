@@ -24,9 +24,9 @@ from app.llm.base import GenerationError
 from app.wizard import flow, state
 
 logging.basicConfig(level=logging.INFO)
-log = logging.getLogger("promptgen")
+log = logging.getLogger("incipit")
 
-app = FastAPI(title="promptgen")
+app = FastAPI(title="incipit")
 _here = Path(__file__).parent
 app.mount("/static", StaticFiles(directory=_here / "static"), name="static")
 templates = Jinja2Templates(directory=_here / "templates")
@@ -718,6 +718,18 @@ async def download(sid: str):
         flow.assemble_final(s),
         media_type="text/markdown",
         headers={"Content-Disposition": 'attachment; filename="mega-prompt.md"'},
+    )
+
+
+@app.get("/sessions/{sid}/download-jira.md")
+async def download_jira(sid: str):
+    s = state.get(sid)
+    if s is None:
+        return Response(status_code=404)
+    return PlainTextResponse(
+        flow.assemble_jira_export(s),
+        media_type="text/markdown",
+        headers={"Content-Disposition": 'attachment; filename="jira-export.md"'},
     )
 
 

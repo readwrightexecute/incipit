@@ -8,7 +8,7 @@
   the server has dropped the in-memory session.
 */
 (function () {
-  var KEY = "promptgen.history.v1";
+  var KEY = "incipit.history.v1";
   var MAX = 50;
 
   function load() {

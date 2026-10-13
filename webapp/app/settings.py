@@ -14,10 +14,10 @@ from urllib.parse import urlparse
 
 from app import config
 
-log = logging.getLogger("promptgen.settings")
+log = logging.getLogger("incipit.settings")
 
 # CWD-relative so it lives next to the repo checkout; override for containers.
-STORE_PATH = os.environ.get("INCIPIT_SETTINGS_FILE", ".promptgen.json")
+STORE_PATH = os.environ.get("INCIPIT_SETTINGS_FILE", ".incipit.json")
 
 _FIELDS = ("base_url", "model", "api_key", "reasoning_effort")
 _DEFAULT_ALLOWED_BASE_URL_HOSTS = {"localhost", "127.0.0.1", "::1", "api.openai.com"}
@@ -53,9 +53,6 @@ def allowed_base_url_hosts() -> set[str]:
     seeded_host = _hostname(config.OPENAI_BASE_URL)
     if seeded_host:
         hosts.add(seeded_host)
-    webui_host = _hostname(os.environ.get("WEBUI_API_URL", ""))
-    if webui_host:
-        hosts.add(webui_host)
     extra = os.environ.get("INCIPIT_ALLOWED_BASE_URL_HOSTS", "")
     hosts.update(
         host for host in (_hostname(part.strip()) for part in extra.split(",")) if host
@@ -82,9 +79,6 @@ def normalize_base_url(base_url: str) -> str:
             f"Endpoint host '{host}' is not allowed. "
             "Set INCIPIT_ALLOWED_BASE_URL_HOSTS to allow it."
         )
-    webui_host = _hostname(config.WEBUI_API_BASE)
-    if config.WEBUI_API_BASE and host == webui_host and parsed.path in ("", "/"):
-        return config.WEBUI_API_BASE
     return normalized
 
 

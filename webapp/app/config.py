@@ -3,7 +3,6 @@
 import logging
 import os
 import shlex
-from urllib.parse import urlparse
 
 try:
     from dotenv import load_dotenv
@@ -12,7 +11,7 @@ try:
 except ImportError:
     pass
 
-log = logging.getLogger("promptgen.config")
+log = logging.getLogger("incipit.config")
 
 
 def _int(name: str, default: int) -> int:
@@ -34,19 +33,6 @@ def _bool(name: str, default: bool) -> bool:
     if raw is None:
         return default
     return raw.strip().lower() in ("1", "true", "yes", "on")
-
-
-def _webui_api_base() -> str:
-    """Normalize a shared Open WebUI URL into its OpenAI-compatible API base."""
-    raw = os.environ.get("WEBUI_API_URL", "").strip().rstrip("/")
-    if not raw:
-        return ""
-    if raw.endswith("/chat/completions"):
-        return raw[: -len("/chat/completions")]
-    parsed = urlparse(raw)
-    if parsed.scheme and parsed.netloc and parsed.path in ("", "/"):
-        return raw + "/api"
-    return raw
 
 
 # Backend selection: openai | diffusion-cnv | diffusion-oneshot
@@ -84,16 +70,11 @@ LOAD_TIMEOUT = _int("INCIPIT_LOAD_TIMEOUT", 600)
 IDLE_TIMEOUT = _int("INCIPIT_IDLE_TIMEOUT", 600)
 
 # OpenAI-compatible endpoint (the default backend). Defaults target a local
-# Ollama install; override for LM Studio, llama-server, vLLM, Open WebUI, or
-# OpenAI proper. WEBUI_* aliases support shared Doppler configurations.
-WEBUI_API_BASE = _webui_api_base()
-OPENAI_BASE_URL = (
-    os.environ.get("INCIPIT_OPENAI_BASE_URL")
-    or WEBUI_API_BASE
-    or "http://localhost:11434/v1"
-)
-OPENAI_MODEL = os.environ.get("INCIPIT_OPENAI_MODEL") or os.environ.get("WEBUI_MODEL", "")
-OPENAI_API_KEY = os.environ.get("INCIPIT_OPENAI_API_KEY") or os.environ.get("WEBUI_API_KEY", "")
+# Ollama install; override for LM Studio, llama-server, vLLM, OpenAI proper,
+# or any other OpenAI-compatible service.
+OPENAI_BASE_URL = os.environ.get("INCIPIT_OPENAI_BASE_URL", "http://localhost:11434/v1")
+OPENAI_MODEL = os.environ.get("INCIPIT_OPENAI_MODEL", "")
+OPENAI_API_KEY = os.environ.get("INCIPIT_OPENAI_API_KEY", "")
 
 # Reasoning effort sent to the OpenAI-compatible endpoint. One of:
 #   default          - omit the field entirely (the model decides)
@@ -124,7 +105,7 @@ SESSION_TTL = _int("INCIPIT_SESSION_TTL", 24 * 3600)
 # Existing-project repo grounding (Workstream F). For "existing" projects the
 # wizard fetches a compact repo summary and injects it into the drafting prompts.
 # GITHUB_TOKEN is optional (lifts the 60 req/h anonymous rate limit). FIRECRAWL_URL
-# is the homelab Firecrawl base (e.g. http://firecrawl.default.svc:3002) used as a
+# is an optional Firecrawl base URL used as a
 # fallback for non-GitHub hosts or API failures; blank disables the fallback.
 GITHUB_TOKEN = os.environ.get("INCIPIT_GITHUB_TOKEN", "")
 FIRECRAWL_URL = os.environ.get("INCIPIT_FIRECRAWL_URL", "")
@@ -136,14 +117,11 @@ REPO_CONTEXT_MAX_CHARS = _int("INCIPIT_REPO_CONTEXT_MAX", 6000)
 # access token is stored server-side only (app/auth.py); the browser cookie
 # carries just a signed, opaque session id. The CLIENT_ID below is the public,
 # registered OAuth-app id (not a secret); the CLIENT_SECRET must come from the
-# environment (Doppler/Vault) and must never be committed. Blank client
+# environment or secret manager and must never be committed. Blank client
 # id/secret simply disables the login button.
-GITHUB_OAUTH_CLIENT_ID = os.environ.get(
-    "INCIPIT_GITHUB_OAUTH_CLIENT_ID", "Ov23liQTAZncU8NnfMS4")
+GITHUB_OAUTH_CLIENT_ID = os.environ.get("INCIPIT_GITHUB_OAUTH_CLIENT_ID", "")
 GITHUB_OAUTH_CLIENT_SECRET = os.environ.get("INCIPIT_GITHUB_OAUTH_CLIENT_SECRET", "")
-GITHUB_OAUTH_REDIRECT_URL = os.environ.get(
-    "INCIPIT_GITHUB_OAUTH_REDIRECT_URL",
-    "https://incipit.nexus.inmotionhosting.com/auth/github/callback")
+GITHUB_OAUTH_REDIRECT_URL = os.environ.get("INCIPIT_GITHUB_OAUTH_REDIRECT_URL", "")
 GITHUB_OAUTH_SCOPES = os.environ.get("INCIPIT_GITHUB_OAUTH_SCOPES", "repo")
 
 # --- Atlassian (Jira) OAuth 2.0 / 3LO ("Sign in with Atlassian") -----------
@@ -151,17 +129,14 @@ GITHUB_OAUTH_SCOPES = os.environ.get("INCIPIT_GITHUB_OAUTH_SCOPES", "repo")
 # access + refresh tokens and the resolved cloudId / site live server-side only
 # (app/auth.py); the browser cookie carries just the signed, opaque session id.
 # CLIENT_ID is the public, registered OAuth-app id (not a secret); CLIENT_SECRET
-# must come from the environment (Doppler/Vault) and must never be committed.
+# must come from the environment or secret manager and must never be committed.
 # `offline_access` is appended to the scope at request time (not configured
 # here) so Atlassian returns a refresh token. Blank client id/secret disables
 # the "Sign in with Atlassian" button.
-ATLASSIAN_OAUTH_CLIENT_ID = os.environ.get(
-    "INCIPIT_ATLASSIAN_OAUTH_CLIENT_ID", "gp295kGiSA32NqMPoeQCwMmbSTI8wjtp")
+ATLASSIAN_OAUTH_CLIENT_ID = os.environ.get("INCIPIT_ATLASSIAN_OAUTH_CLIENT_ID", "")
 ATLASSIAN_OAUTH_CLIENT_SECRET = os.environ.get(
     "INCIPIT_ATLASSIAN_OAUTH_CLIENT_SECRET", "")
-ATLASSIAN_OAUTH_REDIRECT_URL = os.environ.get(
-    "INCIPIT_ATLASSIAN_OAUTH_REDIRECT_URL",
-    "https://incipit.nexus.inmotionhosting.com/auth/atlassian/callback")
+ATLASSIAN_OAUTH_REDIRECT_URL = os.environ.get("INCIPIT_ATLASSIAN_OAUTH_REDIRECT_URL", "")
 ATLASSIAN_OAUTH_SCOPES = os.environ.get(
     "INCIPIT_ATLASSIAN_OAUTH_SCOPES",
     "read:jira-work write:jira-work read:jira-user")

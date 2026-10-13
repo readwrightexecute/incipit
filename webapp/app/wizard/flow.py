@@ -15,7 +15,7 @@ from app.llm.base import GenerationError, get_backend
 from app.wizard import state
 from app.wizard.state import QA, PartyChange, PartyMessage, PartyQAChange, Section, Session
 
-log = logging.getLogger("promptgen.flow")
+log = logging.getLogger("incipit.flow")
 
 _here = Path(__file__).parent
 _jinja = Environment(loader=FileSystemLoader(_here / "prompts"), autoescape=False)
@@ -48,6 +48,18 @@ PROJECT_TYPE_HINTS = {
                 "conventions; prefer additive, non-breaking changes",
 }
 N_QUESTIONS = {"hobby": 5, "internal": 6, "serious": 8}
+
+ENGINEERING_STANDARDS_SECTION = """## Engineering Standards & Requirements
+
+- Read the nearest repository guidance first: AGENTS.md, CLAUDE.md, CONTRIBUTING.md, README files, docs, ADRs, and package/module notes.
+- Fit the current codebase architecture and style; prefer existing patterns, helpers, naming, formatting, and dependency choices.
+- Keep changes narrow unless the brief explicitly calls for a larger migration; avoid unrelated refactors and drive-by cleanup.
+- Preserve existing behavior and public contracts unless this brief explicitly changes them; call out compatibility and migration concerns.
+- Treat security and privacy requirements as binding: validate inputs, enforce authorization and CSRF/session boundaries where relevant, protect secrets, and document new trust boundaries.
+- Add or update deterministic tests at the right level for changed behavior, including meaningful edge and error paths; state any intentional coverage gaps.
+- Keep normal CI and quality gates green: formatting, linting, type checks, test suites, build/package checks, and repository-specific verification commands.
+- Update documentation, examples, configuration references, and operational notes when behavior, setup, deployment, secrets, or user-facing workflows change.
+- Leave the work reviewable: focused commits, a concise PR summary, verification performed, risks, rollout notes, and follow-up work."""
 
 backend = get_backend()
 SYSTEM = _jinja.get_template("system.md.j2").render().strip()
@@ -811,4 +823,136 @@ def assemble_final(s: Session) -> str:
     parts.append("")
     for sec in s.sections:
         parts += [f"## {sec.title}", "", sec.content, ""]
+    parts += [ENGINEERING_STANDARDS_SECTION, ""]
     return "\n".join(parts)
+
+
+def _matching_section(s: Session, *needles: str) -> Section | None:
+    for sec in s.sections:
+        haystack = f"{sec.id} {sec.title}".lower().replace("-", "_")
+        if any(needle in haystack for needle in needles):
+            return sec
+    return None
+
+
+def _labeled_blocks(content: str, label_re: re.Pattern) -> list[tuple[str, str]]:
+    """Extract labeled markdown-ish blocks, preserving continuation lines."""
+    blocks: list[tuple[str, list[str]]] = []
+    current: tuple[str, list[str]] | None = None
+    for raw_line in content.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        match = label_re.match(line)
+        if match:
+            current = (match.group(1), [match.group(2).strip()])
+            blocks.append(current)
+        elif current is not None:
+            current[1].append(line)
+    return [(label, " ".join(part for part in parts if part).strip())
+            for label, parts in blocks]
+
+
+def _plain_blocks(content: str) -> list[str]:
+    return [line.strip(" -*\t") for line in content.splitlines() if line.strip()]
+
+
+_EMPH = r"(?:\*\*|__|\*|_|`)?"
+_FR_RE = re.compile(
+    rf"^(?:[-*]\s*)?(?:\d+[.)]\s*)?{_EMPH}(FR-?\d+){_EMPH}\s*[:.)-]\s*{_EMPH}(.+)$",
+    re.IGNORECASE,
+)
+_AC_RE = re.compile(
+    rf"^(?:[-*]\s*)?(?:\d+[.)]\s*)?{_EMPH}((?:AC|Acceptance\s*Criterion)[-\w]*){_EMPH}\s*[:.)-]\s*{_EMPH}(.+)$",
+    re.IGNORECASE,
+)
+
+
+def _normalize_req_id(value: str) -> str:
+    return re.sub(r"[^A-Z0-9]", "", value.upper())
+
+
+def _referenced_req_ids(text: str) -> set[str]:
+    return {_normalize_req_id(token) for token in re.findall(r"\bFR-?\d+\b", text, re.I)}
+
+
+def _criteria_for_requirement(requirement_id: str, criteria: list[str]) -> list[str]:
+    matched: list[str] = []
+    normalized = _normalize_req_id(requirement_id)
+    for criterion in criteria:
+        if normalized in _referenced_req_ids(criterion):
+            matched.append(criterion)
+    return matched
+
+
+def assemble_jira_export(s: Session) -> str:
+    """Build a generic Jira-friendly markdown export without calling Jira."""
+    req_section = _matching_section(s, "functional_requirements", "functional requirements",
+                                    "requirements")
+    ac_section = _matching_section(s, "acceptance_criteria", "acceptance criteria")
+    requirements = _labeled_blocks(req_section.content, _FR_RE) if req_section else []
+    criteria = [
+        f"{label}: {text}" for label, text in _labeled_blocks(ac_section.content, _AC_RE)
+    ] if ac_section else []
+    if ac_section and not criteria:
+        criteria = _plain_blocks(ac_section.content)
+
+    parts = [
+        "# Jira Export",
+        "",
+        "Markdown-only planning export. Create or edit Jira issues manually using the sections below.",
+        "",
+        "## Epic",
+        "",
+        f"**Summary:** {s.idea}",
+        f"**Project type:** {s.project_type}",
+        f"**Stakes:** {s.stakes}",
+        f"**Form factor:** {s.form_factor}",
+    ]
+    if s.project_type == "existing" and s.repo_url:
+        parts.append(f"**Existing repository:** {s.repo_url}")
+    parts += ["", "## Stories", ""]
+
+    if requirements:
+        requirement_ids = {_normalize_req_id(req_id) for req_id, _ in requirements}
+        for req_id, req_text in requirements:
+            matched = _criteria_for_requirement(req_id, criteria)
+            parts += [
+                f"### Story {req_id}",
+                "",
+                f"**Summary:** {req_text}",
+                "",
+                "**Description:**",
+                req_text,
+                "",
+            ]
+            if matched:
+                parts += ["**Acceptance Criteria:**", ""]
+                parts += [f"- {criterion}" for criterion in matched]
+                parts.append("")
+        remaining_criteria = [
+            criterion for criterion in criteria
+            if not (_referenced_req_ids(criterion) & requirement_ids)
+        ]
+        if remaining_criteria:
+            parts += ["### Unmatched Acceptance Criteria", ""]
+            parts += [f"- {criterion}" for criterion in remaining_criteria]
+            parts.append("")
+    else:
+        overview = _matching_section(s, "goals", "overview", "background")
+        description = overview.content if overview and overview.content else assemble_final(s)
+        parts += [
+            "### Story 1",
+            "",
+            f"**Summary:** {s.idea}",
+            "",
+            "**Description:**",
+            description,
+            "",
+        ]
+        if criteria:
+            parts += ["**Acceptance Criteria:**", ""]
+            parts += [f"- {criterion}" for criterion in criteria]
+            parts.append("")
+
+    return "\n".join(parts).rstrip() + "\n"
