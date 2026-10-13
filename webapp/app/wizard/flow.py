@@ -51,17 +51,15 @@ N_QUESTIONS = {"hobby": 5, "internal": 6, "serious": 8}
 
 ENGINEERING_STANDARDS_SECTION = """## Engineering Standards & Requirements
 
-- Follow repository guidance before changing code, including AGENTS.md,
-  CLAUDE.md, CONTRIBUTING.md, README files, and local docs when present.
-- For existing projects, fit the current codebase architecture and conventions;
-  prefer focused, additive changes unless the brief explicitly calls for a
-  larger migration.
-- Treat security requirements as binding: validate inputs, protect secrets,
-  preserve least-privilege access, and document any new trust boundaries.
-- Keep CI, automated tests, and quality checks green. Add or update tests for
-  changed behavior, and call out any meaningful test gaps.
-- Preserve the issue-tracking workflow by keeping implementation notes, review
-  evidence, and follow-up work traceable to the relevant ticket or issue."""
+- Read the nearest repository guidance first: AGENTS.md, CLAUDE.md, CONTRIBUTING.md, README files, docs, ADRs, and package/module notes.
+- Fit the current codebase architecture and style; prefer existing patterns, helpers, naming, formatting, and dependency choices.
+- Keep changes narrow unless the brief explicitly calls for a larger migration; avoid unrelated refactors and drive-by cleanup.
+- Preserve existing behavior and public contracts unless this brief explicitly changes them; call out compatibility and migration concerns.
+- Treat security and privacy requirements as binding: validate inputs, enforce authorization and CSRF/session boundaries where relevant, protect secrets, and document new trust boundaries.
+- Add or update deterministic tests at the right level for changed behavior, including meaningful edge and error paths; state any intentional coverage gaps.
+- Keep normal CI and quality gates green: formatting, linting, type checks, test suites, build/package checks, and repository-specific verification commands.
+- Update documentation, examples, configuration references, and operational notes when behavior, setup, deployment, secrets, or user-facing workflows change.
+- Leave the work reviewable: focused commits, a concise PR summary, verification performed, risks, rollout notes, and follow-up work."""
 
 backend = get_backend()
 SYSTEM = _jinja.get_template("system.md.j2").render().strip()

@@ -373,10 +373,17 @@ def test_assemble_final_includes_engineering_standards_section():
     section = out.split("## Engineering Standards & Requirements", 1)[1]
     assert "AGENTS.md" in section
     assert "CLAUDE.md" in section
+    assert "ADRs" in section
+    assert "architecture and style" in section
+    assert "public contracts" in section
     assert "security" in section.lower()
+    assert "authorization" in section.lower()
     assert "CI" in section
     assert "test" in section.lower()
-    assert "issue-tracking" in section.lower()
+    assert "documentation" in section.lower()
+    assert "PR summary" in section
+    assert "IMH" not in section
+    assert "InMotion" not in section
 
 
 def test_assemble_final_standards_section_relates_to_existing_repository():

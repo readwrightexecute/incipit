@@ -208,6 +208,18 @@ by coverage), but they are covered by `tests/test_auth.py`,
 There is no build step or linter. For a fast dev loop, point the app at any
 running endpoint and run `uvicorn` as above.
 
+## Container image
+
+The slim OpenAI-compatible web app image is built from `webapp/Dockerfile` and
+published by `.github/workflows/container.yml`:
+
+```bash
+docker pull ghcr.io/readwrightexecute/incipit:latest
+docker run --rm -p 8000:8000 \
+  -e INCIPIT_OPENAI_BASE_URL=http://host.docker.internal:11434/v1 \
+  ghcr.io/readwrightexecute/incipit:latest
+```
+
 ## Advanced: DiffusionGemma backend (GPU)
 
 Incipit was originally built around **DiffusionGemma 26B-A4B-it** run through
