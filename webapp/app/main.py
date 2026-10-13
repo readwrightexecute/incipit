@@ -1104,7 +1104,7 @@ async def jira_export(request: Request, sid: str = Form(...),
                       user_login=entry.user_login, attached=result["attached"])
     return _render("partials/jira_result.html", request, ok=True, key=result["key"],
                    url=result["url"], stories=result["stories"],
-                   failed_stories=result["failed_stories"],
+                   not_created_stories=result["failed_stories"],
                    attached=result["attached"])
 
 
@@ -1120,9 +1120,13 @@ async def _export_to_jira(cloud_id, token, site_url, project_key, summary,
         issue_type=config.JIRA_EPIC_ISSUE_TYPE, description_adf=adf, timeout=timeout)
     key = epic["key"]
     created_stories = []
-    failed_stories = 0
+    not_created_stories = 0
+    remaining = deadline - loop.time()
     for index, story in enumerate(stories):
-        remaining = max(0.001, deadline - loop.time())
+        if remaining < 0.5:
+            not_created_stories = len(stories) - index
+            log.warning("jira child story budget exhausted for %s", key)
+            break
         try:
             child = await jira.create_issue(
                 cloud_id, token, project_key=project_key, summary=_jira_story_summary(story),
@@ -1130,7 +1134,7 @@ async def _export_to_jira(cloud_id, token, site_url, project_key, summary,
                 description_adf=markdown_adf.to_adf(_jira_story_description(story)),
                 parent_key=key, timeout=remaining)
         except jira.JiraError as e:
-            failed_stories = len(stories) - index
+            not_created_stories = len(stories) - index
             log.warning("jira child story creation failed for %s: %s", key, e)
             break
         created_stories.append({
@@ -1138,19 +1142,23 @@ async def _export_to_jira(cloud_id, token, site_url, project_key, summary,
             "url": jira.browse_url(site_url, child["key"]),
             "summary": story.summary,
         })
+        remaining = deadline - loop.time()
     attached = True
-    try:
-        remaining = max(0.001, deadline - loop.time())
-        await jira.upload_attachment(
-            cloud_id, token, key, "mega-prompt.md", md, timeout=remaining)
-    except jira.JiraError as e:
-        log.warning("jira attachment failed for %s: %s", key, e)
+    if remaining >= 0.5:
+        try:
+            await jira.upload_attachment(
+                cloud_id, token, key, "mega-prompt.md", md, timeout=remaining)
+        except jira.JiraError as e:
+            log.warning("jira attachment failed for %s: %s", key, e)
+            attached = False
+    else:
+        log.warning("jira attachment skipped, budget exhausted for %s", key)
         attached = False
     return {
         "key": key,
         "url": jira.browse_url(site_url, key),
         "stories": created_stories,
-        "failed_stories": failed_stories,
+        "failed_stories": not_created_stories,
         "attached": attached,
     }
 

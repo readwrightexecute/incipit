@@ -259,10 +259,41 @@ def test_export_reports_partial_story_failure_without_losing_epic(monkeypatch, c
     assert issue_route.call_count == 3
     assert "ABC-20" in resp.text
     assert "ABC-21" in resp.text
-    assert "1 child story failed" in resp.text
+    assert "1 child story was not created" in resp.text
     assert "check Jira before retrying" in resp.text
     assert "jira_export" in caplog.text
     assert "ABC-20" in caplog.text
+
+
+@respx.mock
+def test_export_reports_partial_story_failure_mid_list(monkeypatch):
+    """Failure on a non-last story must report the correct not-created count."""
+    issue_route = respx.post(f"{_REST}/issue").mock(
+        side_effect=[
+            httpx.Response(201, json={"key": "ABC-40", "id": 40}),  # Epic
+            httpx.Response(201, json={"key": "ABC-41", "id": 41}),  # Story 1
+            httpx.Response(400, json={"errors": {"summary": "bad"}}),  # Story 2 fails
+        ])
+    respx.post(f"{_REST}/issue/ABC-40/attachments").mock(
+        return_value=httpx.Response(200, json=[{"id": "1"}]))
+    c = _atlassian_client(monkeypatch)
+    s = _final_session()
+    s.sections = [state.Section(
+        id="requirements",
+        title="Functional Requirements",
+        instruction="",
+        content="FR1: First story.\nFR2: Second story.\nFR3: Third story.",
+    )]
+
+    resp = c.post("/api/jira/export", data={"sid": s.id, "project_key": "ABC"})
+
+    assert resp.status_code == 200
+    # Epic + 1 story created + 1 story failed = 3 calls; story 3 never attempted.
+    assert issue_route.call_count == 3
+    assert "ABC-41" in resp.text
+    # 2 stories not created (the failed one + the untried one).
+    assert "2 child stories were not created" in resp.text
+    assert "check Jira before retrying" in resp.text
 
 
 @respx.mock
