@@ -437,6 +437,12 @@ def test_assemble_jira_export_groups_functional_requirements_into_stories():
                     "functional requirement.\n"
                 ),
             ),
+            Section(
+                id="non_functional_requirements",
+                title="Non-Functional Requirements",
+                instruction="",
+                content="- NFR1: The system SHALL mark invented latency targets as [ASSUMPTION].",
+            ),
         ],
     )
 
@@ -444,21 +450,34 @@ def test_assemble_jira_export_groups_functional_requirements_into_stories():
 
     assert out.startswith("# Jira Export")
     assert "## Epic" in out
+    assert "BMAD ticket envelope/story conventions" in out
     assert "Launch partner onboarding" in out
     assert "Summary: Launch partner onboarding" in out
-    assert "- Existing repository: https://github.com/acme/portal" in out
+    assert "Description: Launch partner onboarding" in out
+    assert "Requirements:" in out
+    assert "- NFR1: The system SHALL mark invented latency targets as [ASSUMPTION]." in out
+    assert "Done when:" in out
+    assert "Boundaries:" in out
+    assert "References:" in out
+    assert "Notes:" in out
+    assert "- existing repository — https://github.com/acme/portal" in out
     assert "## Child Stories" in out
-    assert "- Story summary: FR1: The system SHALL let partners submit onboarding applications." in out
+    assert "### Story FR1" in out
+    assert "Title: The system SHALL let partners submit onboarding applications." in out
+    assert "Covers: [FR1]" in out
+    assert "Verify: Acceptance criteria pass for the covered requirement." in out
     assert "AC1: [FR1] Given a partner application" in out
-    assert "- Story summary: FR2: The system SHALL let staff approve or reject applications." in out
+    assert "### Story FR2" in out
+    assert "Title: The system SHALL let staff approve or reject applications." in out
+    assert "Covers: [FR2]" in out
     assert "AC2: [FR-2] Given a pending application" in out
     assert "## Unmatched Acceptance Criteria" in out
     assert "AC3: The export preserves criteria" in out
 
     stories = out.split("## Child Stories", 1)[1]
-    assert stories.index("Story summary: FR1") < stories.index("AC1:")
-    assert stories.index("AC1:") < stories.index("Story summary: FR2")
-    assert stories.index("Story summary: FR2") < stories.index("AC2:")
+    assert stories.index("### Story FR1") < stories.index("AC1:")
+    assert stories.index("AC1:") < stories.index("### Story FR2")
+    assert stories.index("### Story FR2") < stories.index("AC2:")
     assert stories.index("AC2:") < stories.index("## Unmatched Acceptance Criteria")
 
 
@@ -493,9 +512,11 @@ def test_assemble_jira_export_parses_bold_markdown_requirement_and_criteria_labe
     out = flow.assemble_jira_export(s)
 
     assert "## Child Stories" in out
-    assert "Story summary: FR1: Users can configure billing alert thresholds." in out
+    assert "### Story FR1" in out
+    assert "Title: Users can configure billing alert thresholds." in out
     assert "AC-FR1: Given a threshold" in out
-    assert "Story summary: FR2: Users can preview who will receive an alert." in out
+    assert "### Story FR2" in out
+    assert "Title: Users can preview who will receive an alert." in out
     assert "AC-FR-2: Given recipients" in out
     assert "**FR1:**" not in out
     assert "**AC-FR1:**" not in out
@@ -528,7 +549,8 @@ def test_assemble_jira_export_uses_single_fallback_story_without_requirements():
     assert out.startswith("# Jira Export")
     assert "## Epic" in out
     assert "## Child Stories" in out
-    assert "- Story summary: 1: Improve account audit logging" in out
+    assert "### Story 1" in out
+    assert "Title: Improve account audit logging" in out
     assert "Improve account audit logging" in out
     assert "Add durable audit events for account mutations." in out
     assert "AC1: Audit events include actor, target account, and timestamp." in out

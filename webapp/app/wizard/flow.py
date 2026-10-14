@@ -867,6 +867,10 @@ _FR_RE = re.compile(
     rf"^(?:[-*]\s*)?(?:\d+[.)]\s*)?{_EMPH}(FR-?\d+){_EMPH}\s*[:.)-]\s*{_EMPH}(.+)$",
     re.IGNORECASE,
 )
+_NFR_RE = re.compile(
+    rf"^(?:[-*]\s*)?(?:\d+[.)]\s*)?{_EMPH}(NFR-?\d+){_EMPH}\s*[:.)-]\s*{_EMPH}(.+)$",
+    re.IGNORECASE,
+)
 _AC_RE = re.compile(
     rf"^(?:[-*]\s*)?(?:\d+[.)]\s*)?{_EMPH}((?:AC|Acceptance\s*Criterion)[-\w]*){_EMPH}\s*[:.)-]\s*{_EMPH}(.+)$",
     re.IGNORECASE,
@@ -894,6 +898,13 @@ def _functional_requirements(s: Session) -> list[tuple[str, str]]:
     req_section = _matching_section(s, "functional_requirements", "functional requirements",
                                     "requirements")
     return _labeled_blocks(req_section.content, _FR_RE) if req_section else []
+
+
+def _non_functional_requirements(s: Session) -> list[tuple[str, str]]:
+    req_section = _matching_section(s, "non_functional_requirements",
+                                    "non-functional requirements",
+                                    "non functional requirements")
+    return _labeled_blocks(req_section.content, _NFR_RE) if req_section else []
 
 
 def _acceptance_criteria(s: Session) -> list[str]:
@@ -988,7 +999,7 @@ def jira_story_drafts(s: Session) -> list[JiraStoryDraft]:
         ]
 
     overview = _matching_section(s, "goals", "overview", "background")
-    description = overview.content if overview and overview.content else assemble_final(s)
+    description = _epic_outcome(s)
     return [JiraStoryDraft(
         key="1",
         summary=s.idea,
@@ -1056,6 +1067,7 @@ def assemble_jira_export(s: Session) -> str:
     """Build the Jira-specific Epic projection without calling Jira."""
     stories = jira_story_drafts(s)
     functional_requirements = _functional_requirements(s)
+    non_functional_requirements = _non_functional_requirements(s)
     out_of_scope = _matching_section(s, "out_of_scope", "out of scope")
     tech = _matching_section(s, "tech_constraints", "tech constraints", "stack")
     assumptions = [
@@ -1063,49 +1075,76 @@ def assemble_jira_export(s: Session) -> str:
         if "[ASSUMPTION]" in line.upper()
     ] if tech else []
     scope_items = [f"{_normalize_req_id(req_id)}: {text}" for req_id, text in functional_requirements]
-    success_metrics = _acceptance_criteria(s)
+    quality_items = [
+        f"{_normalize_req_id(req_id)}: {text}" for req_id, text in non_functional_requirements
+    ]
+    done_when = _acceptance_criteria(s)
     validation_notes = jira_export_validation_notes(s)
     parts = [
         "# Jira Export",
         "",
-        "Jira-specific Epic projection. Attach the full Implementation Brief as `mega-prompt.md`.",
+        "Jira-specific Epic projection adapted from BMAD ticket envelope/story conventions. "
+        "Attach the full Implementation Brief as `mega-prompt.md`.",
         "",
         "## Epic",
         "",
         f"Summary: {jira_epic_summary(s)}",
+        f"Description: {_epic_outcome(s)}",
         f"Outcome: {_epic_outcome(s)}",
-        "MVP Scope:",
+        "",
+        "Requirements:",
     ]
     parts += [f"- {item}" for item in (scope_items or ["Use the child stories below as the MVP scope."])]
-    parts += ["", "Out of Scope:"]
+    parts += [f"- {item}" for item in quality_items]
+    parts += ["", "Done when:"]
+    parts += [f"- {item}" for item in (done_when or ["No explicit acceptance criteria were captured."])]
+    parts += ["", "Boundaries:"]
     parts += [f"- {item}" for item in (
         _plain_blocks(out_of_scope.content) if out_of_scope and out_of_scope.content else
-        ["No explicit out-of-scope items were captured."]
+        ["No explicit boundaries were captured."]
     )]
-    parts += ["", "Success Metrics:"]
-    parts += [f"- {item}" for item in (success_metrics or ["No explicit success metrics were captured."])]
-    parts += ["", "Dependencies / Assumptions:"]
+    parts += ["", "References:"]
+    parts.append("- attachment — mega-prompt.md, full Implementation Brief")
     if s.project_type == "existing" and s.repo_url:
-        parts.append(f"- Existing repository: {s.repo_url}")
-    parts += [f"- {item}" for item in (assumptions or ["No explicit dependencies or assumptions were captured."])]
+        parts.append(f"- existing repository — {s.repo_url}")
+    parts += ["", "Notes:"]
+    parts += [f"- Assumption: {item}" for item in assumptions]
+    parts += [f"- Validation: {note}" for note in validation_notes]
+    if not assumptions and not validation_notes:
+        parts.append("- No notes captured.")
     parts += ["", "## Child Stories", ""]
 
     for story in stories:
+        normalized_key = _normalize_req_id(story.key)
         parts += [
-            f"- Story summary: {_normalize_req_id(story.key)}: {story.summary}",
-            f"  - User value: {story.description}",
-            "  - Acceptance criteria:",
+            f"### Story {normalized_key}",
+            "",
+            f"Title: {story.summary}",
+            f"Description: {story.description}",
+            f"Covers: [{normalized_key}]",
+            "Verify: Acceptance criteria pass for the covered requirement.",
+            "",
+            "Acceptance Criteria:",
         ]
         if story.acceptance_criteria:
-            parts += [f"    - {criterion}" for criterion in story.acceptance_criteria]
+            parts += [f"- {criterion}" for criterion in story.acceptance_criteria]
         else:
-            parts.append("    - [NEEDS AC COVERAGE] Add criteria before implementation.")
+            parts.append("- [NEEDS AC COVERAGE] Add criteria before implementation.")
+        parts += [
+            "",
+            "Boundaries:",
+            "- Must not change: behavior outside the covered requirement unless the Epic says so.",
+            "",
+            "References:",
+            f"- parent — Epic projection, Requirements {normalized_key}",
+            "",
+            "Notes:",
+            "- No story-local notes captured.",
+            "",
+        ]
     remaining_criteria = jira_unmatched_acceptance_criteria(s)
     if remaining_criteria:
         parts += ["", "## Unmatched Acceptance Criteria", ""]
         parts += [f"- {criterion}" for criterion in remaining_criteria]
-    if validation_notes:
-        parts += ["", "## Validation Notes", ""]
-        parts += [f"- {note}" for note in validation_notes]
 
     return "\n".join(parts).rstrip() + "\n"
