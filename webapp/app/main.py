@@ -1020,9 +1020,9 @@ async def atlassian_logout(request: Request):
 
 # ---- Jira export (issue creation over REST) ---------------------------------
 # /api/jira/projects loads the user's projects into the picker (refreshing the
-# token first); /api/jira/export builds the mega-prompt, converts it to ADF,
-# creates the issue, attaches the raw .md, and audits the export — all inside a
-# time budget. A lapsed Atlassian session answers 401 with the re-authorize
+# token first); /api/jira/export builds a Jira plan, creates one Epic plus child
+# Stories, attaches the raw .md to the Epic, and audits the export — all inside
+# a time budget. A lapsed Atlassian session answers 401 with the re-authorize
 # modal (same beforeSwap handler as the GitHub path).
 
 def _jira_unauthorized() -> HTMLResponse:
@@ -1042,7 +1042,7 @@ def _jira_summary(s) -> str:
 
 @app.get("/api/jira/projects", response_class=HTMLResponse)
 async def jira_projects(request: Request, sid: str = ""):
-    """The connected user's projects + issue-type options as the export form.
+    """The connected user's projects as the export form.
     401 (not signed in / refresh failed) renders the re-authorize modal."""
     rec = current_auth(request)
     try:
@@ -1061,13 +1061,12 @@ async def jira_projects(request: Request, sid: str = ""):
                   reason="Couldn't load your Jira projects. Please try again."),
             status_code=200)
     return _render("partials/jira_projects.html", request, sid=sid, projects=projects,
-                   issue_types=config.JIRA_ISSUE_TYPES,
                    default_project=config.JIRA_DEFAULT_PROJECT_KEY)
 
 
 @app.post("/api/jira/export", response_class=HTMLResponse)
 async def jira_export(request: Request, sid: str = Form(...),
-                      project_key: str = Form(...), issue_type: str = Form("Task")):
+                      project_key: str = Form(...)):
     s = state.get(sid)
     if s is None:
         return _render("partials/jira_result.html", request, ok=False,
@@ -1091,7 +1090,8 @@ async def jira_export(request: Request, sid: str = Form(...),
     try:
         result = await _export_to_jira(
             cloud_id, entry.access_token, site_url,
-            project_key, summary, issue_type, adf, md, timeout=budget)
+            project_key, summary, adf, md, flow.jira_story_drafts(s),
+            timeout=budget)
     except jira.JiraError as e:
         if e.status_code == 401:
             return _jira_unauthorized()
@@ -1103,28 +1103,83 @@ async def jira_export(request: Request, sid: str = Form(...),
     audit.jira_export(project_key, result["key"], user_id=entry.user_id,
                       user_login=entry.user_login, attached=result["attached"])
     return _render("partials/jira_result.html", request, ok=True, key=result["key"],
-                   url=result["url"], attached=result["attached"])
+                   url=result["url"], stories=result["stories"],
+                   not_created_stories=result["failed_stories"],
+                   attached=result["attached"])
 
 
 async def _export_to_jira(cloud_id, token, site_url, project_key, summary,
-                          issue_type, adf, md, *, timeout: float) -> dict:
-    """Create the issue, then best-effort attach the raw .md. Attachment failure
-    doesn't fail the export — the issue exists either way; we just flag it."""
+                          adf, md, stories, *, timeout: float) -> dict:
+    """Create the Epic and child Stories, then best-effort attach the raw .md.
+    Attachment failure doesn't fail the export — the Epic exists either way; we
+    just flag it."""
     loop = asyncio.get_running_loop()
     deadline = loop.time() + timeout
-    issue = await jira.create_issue(
+    remaining = max(0.001, deadline - loop.time())
+    epic = await jira.create_issue(
         cloud_id, token, project_key=project_key, summary=summary,
-        issue_type=issue_type, description_adf=adf, timeout=timeout)
-    key = issue["key"]
+        issue_type=config.JIRA_EPIC_ISSUE_TYPE, description_adf=adf, timeout=remaining)
+    key = epic["key"]
+    created_stories = []
+    not_created_stories = 0
+    remaining = deadline - loop.time()
+    for index, story in enumerate(stories):
+        if remaining < 0.5:
+            not_created_stories = len(stories) - index
+            log.warning("jira child story budget exhausted for %s", key)
+            break
+        try:
+            child = await jira.create_issue(
+                cloud_id, token, project_key=project_key, summary=_jira_story_summary(story),
+                issue_type=config.JIRA_STORY_ISSUE_TYPE,
+                description_adf=markdown_adf.to_adf(_jira_story_description(story)),
+                parent_key=key, timeout=remaining)
+        except jira.JiraError as e:
+            not_created_stories = len(stories) - index
+            log.warning("jira child story creation failed for %s: %s", key, e)
+            break
+        created_stories.append({
+            "key": child["key"],
+            "url": jira.browse_url(site_url, child["key"]),
+            "summary": story.summary,
+        })
+        remaining = deadline - loop.time()
+    remaining = deadline - loop.time()
     attached = True
-    try:
-        remaining = max(0.001, deadline - loop.time())
-        await jira.upload_attachment(
-            cloud_id, token, key, "mega-prompt.md", md, timeout=remaining)
-    except jira.JiraError as e:
-        log.warning("jira attachment failed for %s: %s", key, e)
+    if remaining >= 0.5:
+        try:
+            await jira.upload_attachment(
+                cloud_id, token, key, "mega-prompt.md", md, timeout=remaining)
+        except jira.JiraError as e:
+            log.warning("jira attachment failed for %s: %s", key, e)
+            attached = False
+    else:
+        log.warning("jira attachment skipped, budget exhausted for %s", key)
         attached = False
-    return {"key": key, "url": jira.browse_url(site_url, key), "attached": attached}
+    return {
+        "key": key,
+        "url": jira.browse_url(site_url, key),
+        "stories": created_stories,
+        "failed_stories": not_created_stories,
+        "attached": attached,
+    }
+
+
+def _jira_story_summary(story) -> str:
+    summary = " ".join((story.summary or "").split())
+    if not summary:
+        summary = "Incipit story"
+    if story.key == "1":
+        return summary[:255]
+    return f"{flow._normalize_req_id(story.key)}: {summary}"[:255]
+
+
+def _jira_story_description(story) -> str:
+    parts = [story.description]
+    if story.acceptance_criteria:
+        parts += ["", "## Acceptance Criteria", ""]
+        parts += [f"- {criterion}" for criterion in story.acceptance_criteria]
+    return "\n".join(parts)
 
 
 def _expires_at(expires_in) -> float:

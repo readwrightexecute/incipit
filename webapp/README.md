@@ -118,11 +118,11 @@ tokens are ever logged). Leave the client id/secret blank to disable the button.
 ### Optional: Sign in with Atlassian (Jira export)
 
 On the final step you can **"Sign in with Atlassian"** (OAuth 2.0 / 3LO) and
-push the assembled brief straight into a Jira issue: pick a **Project** +
-**Issue type**, hit **Export to Jira**, and you get back the issue key and a
-clickable link. The brief is sent as a pretty **ADF** description and the raw
-`.md` is also attached. Each user authorizes their **own** Jira site — there is
-no shared/admin token. Access **and** refresh tokens plus the resolved
+push the assembled brief into Jira: pick a **Project**, hit **Export to Jira**,
+and Incipit creates one **Epic** with child **Stories** derived from the
+functional requirements. You get back the Epic key, child Story links, and the
+raw `.md` attached to the Epic. Each user authorizes their **own** Jira site —
+there is no shared/admin token. Access **and** refresh tokens plus the resolved
 `cloudId`/site live **server-side only**; the cookie still carries just the
 opaque signed session id, and the token is auto-refreshed before it lapses.
 
@@ -132,9 +132,10 @@ opaque signed session id, and the token is auto-refreshed before it lapses.
 | `INCIPIT_ATLASSIAN_OAUTH_CLIENT_SECRET` | Atlassian OAuth app client secret — **secret**, set via env, never commit |
 | `INCIPIT_ATLASSIAN_OAUTH_REDIRECT_URL` | Callback URL registered on the app (`…/auth/atlassian/callback`) |
 | `INCIPIT_ATLASSIAN_OAUTH_SCOPES` | Console scopes (default `read:jira-work write:jira-work read:jira-user`); `offline_access` is appended at request time so a refresh token is issued |
-| `INCIPIT_JIRA_ISSUE_TYPES` | Comma-separated issue types for the dropdown (default `Task,Story,Bug`) |
+| `INCIPIT_JIRA_EPIC_ISSUE_TYPE` | Issue type name for the parent issue (default `Epic`) |
+| `INCIPIT_JIRA_STORY_ISSUE_TYPE` | Issue type name for child issues (default `Story`) |
 | `INCIPIT_JIRA_DEFAULT_PROJECT_KEY` | Optional project key to pre-select |
-| `INCIPIT_JIRA_EXPORT_TIMEOUT` | End-to-end export budget in ms (default `4000`) |
+| `INCIPIT_JIRA_EXPORT_TIMEOUT` | End-to-end export budget in ms (default `10000`) |
 
 Export events are recorded on the `incipit.audit` logger. Leave the Atlassian
 client id/secret blank to hide the button. **`INCIPIT_ATLASSIAN_OAUTH_CLIENT_SECRET`
@@ -177,9 +178,10 @@ Secrets are flagged — never commit them.
 | `INCIPIT_ATLASSIAN_OAUTH_CLIENT_SECRET` | Atlassian OAuth app client secret (**secret**) | _(empty)_ |
 | `INCIPIT_ATLASSIAN_OAUTH_REDIRECT_URL` | Atlassian OAuth callback URL | _(empty)_ |
 | `INCIPIT_ATLASSIAN_OAUTH_SCOPES` | Atlassian console scopes (`offline_access` appended at request time) | `read:jira-work write:jira-work read:jira-user` |
-| `INCIPIT_JIRA_ISSUE_TYPES` | Issue-type dropdown options | `Task,Story,Bug` |
+| `INCIPIT_JIRA_EPIC_ISSUE_TYPE` | Parent issue type name | `Epic` |
+| `INCIPIT_JIRA_STORY_ISSUE_TYPE` | Child issue type name | `Story` |
 | `INCIPIT_JIRA_DEFAULT_PROJECT_KEY` | Pre-selected project key | _(empty)_ |
-| `INCIPIT_JIRA_EXPORT_TIMEOUT` | Export time budget (ms) | `4000` |
+| `INCIPIT_JIRA_EXPORT_TIMEOUT` | Export time budget (ms) | `10000` |
 | `INCIPIT_SESSION_COOKIE_SECRET` | Secret for signing the session cookie (**secret**; set so cookies survive restarts) | _(ephemeral per-process)_ |
 | `INCIPIT_COOKIE_SECURE` | Set the cookie `Secure` flag | `true` |
 

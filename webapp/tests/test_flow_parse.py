@@ -535,3 +535,4 @@ def test_assemble_jira_export_uses_single_fallback_story_without_requirements():
     assert "Add durable audit events for account mutations." in out
     assert "AC1: Audit events include actor, target account, and timestamp." in out
     assert "### Story FR" not in out
+    assert "### Unmatched Acceptance Criteria" not in out

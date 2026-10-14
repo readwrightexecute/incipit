@@ -10,13 +10,6 @@
         {% endfor %}
       </select>
     </label>
-    <label>Issue type
-      <select name="issue_type">
-        {% for t in issue_types %}
-        <option value="{{ t }}">{{ t }}</option>
-        {% endfor %}
-      </select>
-    </label>
     <button type="submit" class="jira-go">Export to Jira
       <span id="jira-spin" class="spinner htmx-indicator" data-anim="sweep" aria-hidden="true"></span>
     </button>
