@@ -74,6 +74,7 @@ def test_last_section_poll_clears_stale_status_bar():
     body = resp.body.decode()
 
     assert 'id="status-bar" hx-swap-oob="innerHTML"' in body
+    assert body.count('id="status-bar"') == 1
     assert 'id="step3-actions" hx-swap-oob="innerHTML"' in body
     assert "Party review" in body
     assert "Finish" in body

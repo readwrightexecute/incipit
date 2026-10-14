@@ -1,5 +1,6 @@
 {% set drafting = s.sections | rejectattr('status', 'equalto', 'done') | list %}
-{% if not drafting %}
+{% set status_oob = status_oob|default(true) %}
+{% if not drafting and status_oob %}
 <div id="status-bar" hx-swap-oob="innerHTML"></div>
 {% endif %}
 <div class="action-bar bar-3">
