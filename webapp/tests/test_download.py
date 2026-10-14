@@ -72,7 +72,10 @@ def test_download_jira_md_returns_jira_export():
     assert "## Epic" in body
     assert "## Child Stories" in body
     assert "### Story FR1" in body
+    assert "Title: Users can create todos." in body
+    assert "Covers: [FR1]" in body
     assert "- **Story summary:** Users can create todos." in body
+    assert "Users can create todos." in body
     assert "AC-FR1: Given a todo" in body
     assert "# Implementation Brief" not in body
 

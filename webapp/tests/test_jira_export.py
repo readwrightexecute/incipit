@@ -216,9 +216,26 @@ def test_export_creates_issue_attaches_and_confirms(monkeypatch, caplog):
     assert story["fields"]["issuetype"]["name"] == "Story"
     assert story["fields"]["parent"]["key"] == "ABC-42"
     assert story["fields"]["description"]["type"] == "doc"
+    assert epic["fields"]["summary"] == "A todo app"
+    epic_description = json.dumps(epic["fields"]["description"])
+    assert "Jira-specific Epic projection" in epic_description
+    assert "Child Stories" in epic_description
+    assert "Project idea (verbatim from the author)" not in epic_description
     # Export was audited with the issue key.
     assert "jira_export" in caplog.text
     assert "ABC-42" in caplog.text
+
+
+def test_jira_summary_prefers_explicit_epic_summary():
+    s = _final_session()
+    s.sections = [state.Section(
+        id="goals",
+        title="Goals & Background",
+        instruction="",
+        content="Epic Summary: Ship Jira-ready Epic export\nOutcome: Jira receives scoped planning artifacts.",
+    )]
+
+    assert main._jira_summary(s) == "Ship Jira-ready Epic export"
 
 
 @respx.mock

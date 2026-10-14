@@ -1033,7 +1033,7 @@ def _jira_unauthorized() -> HTMLResponse:
 
 
 def _jira_summary(s) -> str:
-    """A concise Epic summary derived from the generated brief."""
+    """A concise, outcome-based Epic summary."""
     return flow.jira_epic_summary(s)
 
 
@@ -1080,8 +1080,8 @@ async def jira_export(request: Request, sid: str = Form(...),
     cloud_id = entry.meta.get("cloud_id", "")
     site_url = entry.meta.get("site_url", "")
     md = flow.assemble_final(s)
-    jira_md = flow.assemble_jira_export(s)
-    adf = markdown_adf.to_adf(jira_md)
+    jira_projection = flow.assemble_jira_export(s)
+    adf = markdown_adf.to_adf(jira_projection)
     summary = _jira_summary(s)
     budget = config.JIRA_EXPORT_TIMEOUT_MS / 1000
 

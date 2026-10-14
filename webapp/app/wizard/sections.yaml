@@ -4,36 +4,37 @@ sections:
   - id: goals
     title: Goals & Background
     instruction: >
-      Start with exactly one line: "Epic Summary: <short outcome-based title>".
-      The title must name the concrete project outcome, not "Incipit",
-      "mega-prompt", or other generic wording. Then write 3-6 Markdown bullet
-      points capturing the desired outcomes, followed by one short paragraph of
-      background context explaining why this is being built. Capability language
-      only — no implementation details.
+      Write a short "Goals & Background" section. Start with exactly two
+      parseable lines: "Epic Summary: <short outcome-based Jira Epic title>"
+      and "Outcome: <one-sentence user/business outcome>". The Epic Summary must
+      be specific to this work and must not be generic text such as "Incipit
+      mega-prompt" or "Implementation Brief". Then add a "Planning Summary:"
+      Markdown bullet list with 3-5 bullets capturing desired outcomes, followed
+      by one short background paragraph explaining why this is being built.
+      Capability language only — no implementation details.
 
   - id: functional_requirements
     title: Functional Requirements
     instruction: >
-      Write the functional requirements as a Markdown bullet list labeled FR1,
-      FR2, ... Each requirement must use SHALL language and be a single
-      story-sized, testable statement of WHAT the system does (e.g. "- FR3: The
-      system SHALL let users export the result as a markdown file"). Each FR
-      should map cleanly to one Jira Story: avoid tiny UI-only steps and avoid
-      broad epics disguised as requirements. Cover the core happy path first,
-      then secondary behaviors. 5-12 requirements depending on stakes. Do not
-      include performance/quality attributes here.
+      Write the functional requirements as a Markdown list with stable IDs FR1,
+      FR2, ... Each item must use SHALL and be a single story-sized, testable
+      statement of WHAT the system does (e.g. "- FR3: The system SHALL let users
+      export the result as a markdown file"). Child Jira stories are derived
+      from these FRs, so do not bundle unrelated behavior into one FR. Cover the
+      core happy path first, then secondary behaviors. 5-12 requirements
+      depending on stakes. Do not include performance/quality attributes here.
 
   - id: non_functional_requirements
     title: Non-Functional Requirements
     instruction: >
-      Write the non-functional requirements as a Markdown bullet list labeled
-      NFR1, NFR2, ... using SHALL language. Cover only the attributes that matter
-      for these stakes: performance, security/auth, reliability, resource
+      Write the non-functional requirements as a Markdown list with stable IDs
+      NFR1, NFR2, ... Each item must use SHALL and cover only attributes that
+      matter for these stakes: performance, security/auth, reliability, resource
       constraints, compatibility. Keep it to 3-7 items. Each must be concrete
       and checkable, not aspirational fluff. Do not invent numeric thresholds,
-      vendors, protocols, compliance claims, or deployment choices as facts
-      unless they came from the idea, repo context, or clarifications; otherwise
-      mark them "[ASSUMPTION]".
+      protocols, vendors, compliance claims, deployment choices, or resource
+      targets unless they came from the idea, repository context, or
+      clarifications; otherwise mark the item "[ASSUMPTION]".
 
   - id: tech_constraints
     title: Tech Constraints & Stack
@@ -42,20 +43,22 @@ sections:
       the technology choices and constraints a coding agent must respect —
       language/runtime, frameworks, storage, deployment target, existing systems
       to integrate with, and anything explicitly ruled out. Derive choices from
-      the user's answers; where the user expressed no preference, choose the
-      simplest mainstream option and mark it "[ASSUMPTION]". Do not introduce
-      vendors, protocols, compliance claims, or deployment choices as facts unless
-      they came from the idea, repo context, or clarifications.
+      the user's answers, repository context, or prior sections. Do not present
+      vendors, protocols, compliance requirements, deployment targets, or
+      infrastructure choices as facts unless they came from those sources; when
+      a choice is necessary but not known, choose the simplest mainstream option
+      and mark it "[ASSUMPTION]".
 
   - id: acceptance_criteria
     title: Acceptance Criteria
     instruction: >
-      Write the acceptance criteria as a Markdown bullet list labeled AC1, AC2,
-      ... Each criterion must cite the FR ids it validates in brackets, for
-      example "- AC1: [FR2, FR5] Given ...". Every FR must be covered by at
-      least one acceptance criterion. Each criterion is a concrete, observable
-      check in Given/When/Then form or "Done when ..." form. Include at least one
-      criterion for error/edge behavior. 5-10 criteria.
+      Write the acceptance criteria as a Markdown list with stable IDs AC1, AC2,
+      ... Each criterion is a concrete, observable check in Given/When/Then form
+      or "Done when ..." form. Each AC must cite covered FR IDs in square
+      brackets immediately after the label, e.g. "- AC1: [FR2, FR5] Given ...".
+      Every FR must have at least one AC covering it, and each AC must reference
+      only FR IDs that exist in the Functional Requirements section. Include at
+      least one criterion for error/edge behavior. 5-12 criteria.
 
   - id: out_of_scope
     title: Out of Scope

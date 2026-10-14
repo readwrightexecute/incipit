@@ -642,8 +642,8 @@ def test_assemble_jira_export_groups_functional_requirements_into_stories():
                 title="Functional Requirements",
                 instruction="",
                 content=(
-                    "FR1: The system SHALL let partners submit onboarding applications.\n"
-                    "FR-2: The system SHALL let staff approve or reject applications.\n"
+                    "- FR1: The system SHALL let partners submit onboarding applications.\n"
+                    "- FR-2: The system SHALL let staff approve or reject applications.\n"
                 ),
             ),
             Section(
@@ -651,13 +651,19 @@ def test_assemble_jira_export_groups_functional_requirements_into_stories():
                 title="Acceptance Criteria",
                 instruction="",
                 content=(
-                    "AC1: [FR1] Given a partner application, when it is submitted, "
+                    "- AC1: [FR1] Given a partner application, when it is submitted, "
                     "then staff can review it.\n"
-                    "AC2: [FR-2] Given a pending application, when staff approves it, "
+                    "- AC2: [FR-2] Given a pending application, when staff approves it, "
                     "then the partner is activated.\n"
-                    "AC-EDGE: The export preserves criteria that do not map to a "
+                    "- AC3: The export preserves criteria that do not map to a "
                     "functional requirement.\n"
                 ),
+            ),
+            Section(
+                id="non_functional_requirements",
+                title="Non-Functional Requirements",
+                instruction="",
+                content="- NFR1: The system SHALL mark invented latency targets as [ASSUMPTION].",
             ),
         ],
     )
@@ -666,26 +672,39 @@ def test_assemble_jira_export_groups_functional_requirements_into_stories():
 
     assert out.startswith("# Jira Export")
     assert "## Epic" in out
+    assert "Jira-specific Epic projection" in out
+    assert "Summary: Launch partner onboarding" in out
     assert "**Summary:** Launch partner onboarding" in out
-    assert "**Outcome:** Launch partner onboarding" in out
+    assert "Description: Launch partner onboarding" in out
+    assert "Outcome: Launch partner onboarding" in out
     assert "**MVP Scope:**" in out
+    assert "Requirements:" in out
+    assert "Done when:" in out
+    assert "Boundaries:" in out
+    assert "References:" in out
+    assert "Notes:" in out
     assert "**Project type:** existing" in out
+    assert "- existing repository — https://github.com/acme/portal" in out
     assert "**Existing repository:** https://github.com/acme/portal" in out
     assert "## Child Stories" in out
     assert "### Story FR1" in out
+    assert "Title: The system SHALL let partners submit onboarding applications." in out
     assert "- **Story summary:** The system SHALL let partners submit onboarding applications." in out
+    assert "Covers: [FR1]" in out
+    assert "Verify: Acceptance criteria pass for the covered requirement." in out
     assert "AC1: [FR1] Given a partner application" in out
-    assert "### Story FR-2" in out
-    assert "The system SHALL let staff approve or reject applications." in out
+    assert "### Story FR2" in out
+    assert "Title: The system SHALL let staff approve or reject applications." in out
+    assert "Covers: [FR2]" in out
     assert "AC2: [FR-2] Given a pending application" in out
-    assert "### Unmatched Acceptance Criteria" in out
-    assert "AC-EDGE: The export preserves criteria" in out
+    assert "## Unmatched Acceptance Criteria" in out
+    assert "AC3: The export preserves criteria" in out
 
-    child_stories = out.split("## Child Stories", 1)[1]
-    assert child_stories.index("### Story FR1") < child_stories.index("AC1: [FR1]")
-    assert child_stories.index("AC1: [FR1]") < child_stories.index("### Story FR-2")
-    assert child_stories.index("### Story FR-2") < child_stories.index("AC2: [FR-2]")
-    assert child_stories.index("AC2: [FR-2]") < child_stories.index("### Unmatched Acceptance Criteria")
+    stories = out.split("## Child Stories", 1)[1]
+    assert stories.index("### Story FR1") < stories.index("AC1:")
+    assert stories.index("AC1:") < stories.index("### Story FR2")
+    assert stories.index("### Story FR2") < stories.index("AC2:")
+    assert stories.index("AC2:") < stories.index("## Unmatched Acceptance Criteria")
 
 
 def test_assemble_jira_export_parses_bold_markdown_requirement_and_criteria_labels():
@@ -718,11 +737,12 @@ def test_assemble_jira_export_parses_bold_markdown_requirement_and_criteria_labe
 
     out = flow.assemble_jira_export(s)
 
+    assert "## Child Stories" in out
     assert "### Story FR1" in out
-    assert "Users can configure billing alert thresholds." in out
+    assert "Title: Users can configure billing alert thresholds." in out
     assert "AC-FR1: Given a threshold" in out
-    assert "### Story FR-2" in out
-    assert "Users can preview who will receive an alert." in out
+    assert "### Story FR2" in out
+    assert "Title: Users can preview who will receive an alert." in out
     assert "AC-FR-2: Given recipients" in out
     assert "**FR1:**" not in out
     assert "**AC-FR1:**" not in out
@@ -756,12 +776,172 @@ def test_assemble_jira_export_uses_single_fallback_story_without_requirements():
     assert "## Epic" in out
     assert "## Child Stories" in out
     assert "### Story 1" in out
+    assert "Title: Improve account audit logging" in out
     assert "Improve account audit logging" in out
     assert "Add durable audit events for account mutations." in out
     assert "AC1: Audit events include actor, target account, and timestamp." in out
     assert "No FR-labeled requirements found" in out
     assert "### Story FR" not in out
-    assert "### Unmatched Acceptance Criteria" not in out
+    assert "## Unmatched Acceptance Criteria" not in out
+
+
+def test_jira_epic_summary_prefers_parseable_non_generic_title():
+    s = _session(
+        idea="Incipit mega-prompt",
+        project_type="new",
+        stakes="serious",
+        form_factor="web app",
+        sections=[
+            Section(
+                id="goals",
+                title="Goals & Background",
+                instruction="",
+                content=(
+                    "Epic Summary: Export implementation briefs as Jira-ready epics\n"
+                    "Outcome: Teams can create scoped Jira work from a brief."
+                ),
+            )
+        ],
+    )
+
+    assert flow.jira_epic_summary(s) == "Export implementation briefs as Jira-ready epics"
+
+
+def test_jira_epic_summary_parses_bolded_label():
+    s = _session(
+        idea="Fallback",
+        project_type="new",
+        stakes="serious",
+        form_factor="web app",
+        sections=[
+            Section(
+                id="goals",
+                title="Goals & Background",
+                instruction="",
+                content="**Epic Summary:** Create readable Jira epics from Incipit briefs",
+            )
+        ],
+    )
+
+    assert flow.jira_epic_summary(s) == "Create readable Jira epics from Incipit briefs"
+
+
+def test_epic_outcome_fallback_skips_epic_summary_label():
+    s = _session(
+        idea="Build a demo app",
+        project_type="new",
+        stakes="serious",
+        form_factor="web app",
+        sections=[
+            Section(
+                id="goals",
+                title="Goals & Background",
+                instruction="",
+                content=(
+                    "Epic Summary: Build a demo app\n"
+                    "- Bullet one: the demo runs locally.\n"
+                    "- Bullet two: the demo exports its results.\n"
+                ),
+            )
+        ],
+    )
+
+    assert flow._epic_outcome(s) == "Bullet one: the demo runs locally."
+
+    out = flow.assemble_jira_export(s)
+    assert "Description: Bullet one: the demo runs locally." in out
+    assert "Outcome: Bullet one: the demo runs locally." in out
+    assert "Description: Epic Summary:" not in out
+    assert "Outcome: Epic Summary:" not in out
+
+
+def test_epic_outcome_fallback_returns_idea_when_goals_is_all_labels():
+    s = _session(
+        idea="Build a demo app",
+        project_type="new",
+        stakes="serious",
+        form_factor="web app",
+        sections=[
+            Section(
+                id="goals",
+                title="Goals & Background",
+                instruction="",
+                content="Epic Summary: Build a demo app\nOutcome:\n",
+            )
+        ],
+    )
+
+    assert flow._epic_outcome(s) == "Build a demo app"
+
+
+def test_assemble_jira_export_story_labels_do_not_collapse_in_adf():
+    s = _session(
+        idea="Launch partner onboarding",
+        project_type="new",
+        stakes="serious",
+        form_factor="web app",
+        sections=[
+            Section(
+                id="functional_requirements",
+                title="Functional Requirements",
+                instruction="",
+                content=(
+                    "- FR1: The system SHALL let partners submit onboarding applications.\n"
+                    "- FR2: The system SHALL let staff approve applications.\n"
+                ),
+            ),
+            Section(
+                id="acceptance_criteria",
+                title="Acceptance Criteria",
+                instruction="",
+                content="- AC1: [FR1] Given an application, then staff can review it.\n",
+            ),
+        ],
+    )
+
+    out = flow.assemble_jira_export(s)
+    story = out.split("### Story FR1", 1)[1].split("### Story FR2", 1)[0]
+    assert "Title: The system SHALL let partners submit onboarding applications." in story
+    assert "Covers: [FR1]" in story
+    assert "Description:\nThe system SHALL let partners submit onboarding applications.\n\nAcceptance Criteria:" in story
+
+    from app import markdown_adf
+    adf = markdown_adf.to_adf(out)
+    paragraphs = [n for n in adf["content"] if n["type"] == "paragraph"]
+    texts = ["".join(n.get("text", "") for n in p["content"]) for p in paragraphs]
+    assert not any("Title: " in t and ("Covers:" in t or "Verify:" in t)
+                   for t in texts)
+    fr_text = "The system SHALL let partners submit onboarding applications."
+    assert "Description: " + fr_text in texts
+    assert fr_text not in texts
+
+
+def test_jira_export_validation_notes_cover_fr_ac_reference_problems():
+    s = _session(
+        idea="Improve billing alerts",
+        project_type="new",
+        stakes="internal",
+        form_factor="API/service",
+        sections=[
+            Section(
+                id="functional_requirements",
+                title="Functional Requirements",
+                instruction="",
+                content="- FR1: The system SHALL send billing alerts.\n- FR2: The system SHALL preview recipients.",
+            ),
+            Section(
+                id="acceptance_criteria",
+                title="Acceptance Criteria",
+                instruction="",
+                content="- AC1: [FR1, FR9] Given a bill, when due, then an alert is sent.",
+            ),
+        ],
+    )
+
+    notes = flow.jira_export_validation_notes(s)
+
+    assert "FR2 has no mapped acceptance criteria." in notes
+    assert any("references unknown FR9" in note for note in notes)
 
 
 def test_jira_consistency_warnings_cover_missing_and_unknown_fr_refs():
