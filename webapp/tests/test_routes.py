@@ -74,6 +74,21 @@ def test_last_section_poll_clears_stale_status_bar():
     body = resp.body.decode()
 
     assert 'id="status-bar" hx-swap-oob="innerHTML"' in body
+    assert body.count('id="status-bar"') == 1
     assert 'id="step3-actions" hx-swap-oob="innerHTML"' in body
+    assert "Party review" in body
+    assert "Finish" in body
+
+
+def test_step3_actions_clears_status_when_buttons_appear():
+    """The job_done-triggered button refresh should clear the first-paint
+    model-loading fallback even if no section-card poll runs afterward."""
+    s = state.create()
+    s.sections = [Section(id="overview", title="Overview", instruction="", content="Done", status="done")]
+
+    resp = asyncio.run(main.step3_actions(_FakeRequest(), s.id))
+    body = resp.body.decode()
+
+    assert 'id="status-bar" hx-swap-oob="innerHTML"' in body
     assert "Party review" in body
     assert "Finish" in body
