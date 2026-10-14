@@ -372,7 +372,7 @@ async def questions_partial(request: Request, sid: str):
     s = state.get(sid)
     if s is None:
         return _render("expired.html", request)
-    return _render("partials/question_list.html", request, s=s)
+    return _render("partials/question_list.html", request, s=s, status_oob=True)
 
 
 @app.post("/sessions/{sid}/answers", response_class=HTMLResponse)
@@ -401,7 +401,7 @@ async def section_partial(request: Request, sid: str, section_id: str):
     if s is None or sec is None:
         return HTMLResponse("<div class='card error'>Unknown section</div>")
     return _render("partials/section_card.html", request, s=s, sec=sec,
-                   examples=flow.REFINE_EXAMPLES)
+                   examples=flow.REFINE_EXAMPLES, oob=True)
 
 
 @app.post("/sessions/{sid}/sections/{section_id}/retry", response_class=HTMLResponse)
