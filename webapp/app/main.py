@@ -1033,11 +1033,8 @@ def _jira_unauthorized() -> HTMLResponse:
 
 
 def _jira_summary(s) -> str:
-    """A concise issue summary derived from the idea."""
-    idea = " ".join((s.idea or "").split())
-    if not idea:
-        return "Incipit mega-prompt"
-    return f"Incipit brief: {idea[:120]}"
+    """A concise Epic summary derived from the generated brief."""
+    return flow.jira_epic_summary(s)
 
 
 @app.get("/api/jira/projects", response_class=HTMLResponse)

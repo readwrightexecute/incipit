@@ -405,6 +405,78 @@ def test_assemble_final_standards_section_relates_to_existing_repository():
     assert "repository guidance" in out[standards_index:].lower()
 
 
+# --- jira_epic_summary ------------------------------------------------------
+
+def test_jira_epic_summary_prefers_generated_section_heading_over_generic_idea():
+    s = _session(
+        idea="Incipit mega-prompt",
+        sections=[
+            Section(
+                id="goals",
+                title="Goals & Background",
+                instruction="",
+                content="# Partner Onboarding Portal\n\n- Let partners apply online.",
+            ),
+        ],
+    )
+
+    assert flow.jira_epic_summary(s) == "Partner Onboarding Portal"
+
+
+def test_jira_epic_summary_uses_labeled_generated_title():
+    s = _session(
+        idea="Incipit brief",
+        sections=[
+            Section(
+                id="goals",
+                title="Goals & Background",
+                instruction="",
+                content="Project title: Account Audit Logging\n\n- Capture durable audit events.",
+            ),
+        ],
+    )
+
+    assert flow.jira_epic_summary(s) == "Account Audit Logging"
+
+
+def test_jira_epic_summary_collapses_multiline_idea():
+    s = _session(
+        idea="Improve billing alerts\n\nfor enterprise accounts",
+        sections=[],
+    )
+
+    assert flow.jira_epic_summary(s) == "Improve billing alerts for enterprise accounts"
+
+
+def test_jira_epic_summary_falls_back_for_blank_and_generic_content():
+    s = _session(
+        idea="\n\n",
+        sections=[
+            Section(
+                id="goals",
+                title="Goals & Background",
+                instruction="",
+                content="## Incipit mega-prompt",
+            ),
+        ],
+    )
+
+    assert flow.jira_epic_summary(s) == "Implementation brief"
+
+
+def test_jira_epic_summary_truncates_long_idea_to_jira_limit():
+    s = _session(
+        idea="Launch " + "very-long-project-name " * 30,
+        sections=[],
+    )
+
+    summary = flow.jira_epic_summary(s)
+
+    assert len(summary) <= 255
+    assert summary.startswith("Launch very-long-project-name")
+    assert not summary.endswith(" ")
+
+
 # --- assemble_jira_export ---------------------------------------------------
 
 def test_assemble_jira_export_groups_functional_requirements_into_stories():
@@ -444,7 +516,7 @@ def test_assemble_jira_export_groups_functional_requirements_into_stories():
 
     assert out.startswith("# Jira Export")
     assert "## Epic" in out
-    assert "Launch partner onboarding" in out
+    assert "**Summary:** Launch partner onboarding" in out
     assert "**Project type:** existing" in out
     assert "**Existing repository:** https://github.com/acme/portal" in out
     assert "## Stories" in out

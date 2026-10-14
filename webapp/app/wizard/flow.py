@@ -858,6 +858,74 @@ def _plain_blocks(content: str) -> list[str]:
     return [line.strip(" -*\t") for line in content.splitlines() if line.strip()]
 
 
+_JIRA_SUMMARY_MAX = 255
+_JIRA_TITLE_LABEL_RE = re.compile(
+    r"^(?:project\s+)?(?:title|name|summary|epic|idea)\s*[:\-]\s*",
+    re.IGNORECASE,
+)
+_JIRA_GENERIC_PREFIX_RE = re.compile(
+    r"^(?:incipit\s+)?(?:mega[-\s]?prompt|brief|implementation\s+brief)"
+    r"\s*(?:for|about|:|-|<)?\s*",
+    re.IGNORECASE,
+)
+_JIRA_GENERIC_TITLE_RE = re.compile(
+    r"^(?:incipit\s+)?(?:mega[-\s]?prompt|brief|implementation\s+brief|jira\s+export)$",
+    re.IGNORECASE,
+)
+
+
+def _jira_title_lines(content: str) -> list[str]:
+    """Prefer explicit generated headings/labels, then the first useful line."""
+    lines = [line.strip() for line in content.splitlines() if line.strip()]
+    titled = [
+        line for line in lines
+        if line.startswith("#") or _JIRA_TITLE_LABEL_RE.match(line.lstrip("-*+ \t"))
+    ]
+    return titled or lines[:1]
+
+
+def _truncate_jira_summary(text: str) -> str:
+    if len(text) <= _JIRA_SUMMARY_MAX:
+        return text
+    shortened = text[:_JIRA_SUMMARY_MAX].rsplit(" ", 1)[0].rstrip(" .,:;-")
+    return shortened or text[:_JIRA_SUMMARY_MAX].rstrip()
+
+
+def _clean_jira_title(raw: str) -> str:
+    title = " ".join((raw or "").split())
+    if not title:
+        return ""
+    title = re.sub(r"^#{1,6}\s*", "", title)
+    title = re.sub(r"^(?:[-*+]|\d+[.)])\s*", "", title)
+    title = re.sub(r"^\[[ xX]\]\s*", "", title)
+    title = title.strip(" `*_\"'")
+    title = _JIRA_TITLE_LABEL_RE.sub("", title).strip()
+    title = _JIRA_GENERIC_PREFIX_RE.sub("", title).strip()
+    title = title.strip(" .,:;-<>`*_\"'")
+    title = " ".join(title.split())
+    if not title or _JIRA_GENERIC_TITLE_RE.match(title):
+        return ""
+    return _truncate_jira_summary(title[:1].upper() + title[1:])
+
+
+def jira_epic_summary(s: Session) -> str:
+    """Derive a Jira Epic title from generated brief content without an LLM call."""
+    overview = _matching_section(s, "goals", "overview", "background")
+    sources: list[str] = []
+    if overview:
+        sources.extend(_jira_title_lines(overview.content))
+    sources.append(s.idea)
+    for sec in s.sections:
+        if sec is not overview:
+            sources.extend(_jira_title_lines(sec.content))
+
+    for source in sources:
+        title = _clean_jira_title(source)
+        if title:
+            return title
+    return "Implementation brief"
+
+
 _EMPH = r"(?:\*\*|__|\*|_|`)?"
 _FR_RE = re.compile(
     rf"^(?:[-*]\s*)?(?:\d+[.)]\s*)?{_EMPH}(FR-?\d+){_EMPH}\s*[:.)-]\s*{_EMPH}(.+)$",
@@ -955,7 +1023,7 @@ def assemble_jira_export(s: Session) -> str:
         "",
         "## Epic",
         "",
-        f"**Summary:** {s.idea}",
+        f"**Summary:** {jira_epic_summary(s)}",
         f"**Project type:** {s.project_type}",
         f"**Stakes:** {s.stakes}",
         f"**Form factor:** {s.form_factor}",
