@@ -1,3 +1,9 @@
+{% if oob and not (s.sections | selectattr("status", "in", ["pending", "generating"]) | list) %}
+<div id="status-bar" hx-swap-oob="innerHTML"></div>
+<div id="step3-actions" hx-swap-oob="innerHTML">
+  {% include "partials/step3_actions.html" %}
+</div>
+{% endif %}
 {% if sec.status in ('pending', 'generating') %}
 {# Waiting: refreshes itself via SSE pokes + 10s polling fallback #}
 <div id="section-{{ sec.id }}"

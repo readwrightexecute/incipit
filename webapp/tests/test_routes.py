@@ -8,7 +8,7 @@ import asyncio
 
 from app import main
 from app.wizard import state
-from app.wizard.state import QA
+from app.wizard.state import QA, Section
 
 
 class _FakeRequest:
@@ -45,3 +45,32 @@ def test_party_questions_tolerates_missing_fields():
     s.party_status = "running"
     asyncio.run(main.party_questions_start(_FakeRequest(), s.id))
     assert s.qas[0].answer == "kept"
+
+
+def test_questions_poll_clears_stale_status_bar():
+    """If the browser missed the final SSE clear, the polling fallback should
+    clear the initial cold-start status when questions are ready."""
+    s = state.create()
+    s.phase = "clarify"
+    s.qas = [QA(question="Q1", assumption="A1")]
+
+    resp = asyncio.run(main.questions_partial(_FakeRequest(), s.id))
+
+    assert 'id="status-bar" hx-swap-oob="innerHTML"' in resp.body.decode()
+
+
+def test_last_section_poll_clears_stale_status_bar():
+    """When all sections are terminal, a section poll also clears any stale
+    model-loading message left behind by a missed SSE event and reveals the
+    action buttons even if the browser missed job_done."""
+    s = state.create()
+    sec = Section(id="overview", title="Overview", instruction="", content="Done", status="done")
+    s.sections = [sec]
+
+    resp = asyncio.run(main.section_partial(_FakeRequest(), s.id, sec.id))
+    body = resp.body.decode()
+
+    assert 'id="status-bar" hx-swap-oob="innerHTML"' in body
+    assert 'id="step3-actions" hx-swap-oob="innerHTML"' in body
+    assert "Party review" in body
+    assert "Finish" in body

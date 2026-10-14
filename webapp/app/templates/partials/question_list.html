@@ -1,9 +1,11 @@
 {% if s.error %}
+{% if oob %}<div id="status-bar" hx-swap-oob="innerHTML"></div>{% endif %}
 <div id="questions"{% if oob %} hx-swap-oob="true"{% endif %}>
   <p class="error">Generation failed: {{ s.error }}</p>
   <p><a href="/" role="button" class="secondary">Start over</a></p>
 </div>
 {% elif s.phase == 'clarify' and s.qas %}
+{% if oob %}<div id="status-bar" hx-swap-oob="innerHTML"></div>{% endif %}
 {# Ready: plain div, no auto-refresh attrs — typed answers must survive #}
 <div id="questions"{% if oob %} hx-swap-oob="true"{% endif %}>
   <form hx-post="/sessions/{{ s.id }}/answers" hx-target="#wizard" hx-swap="innerHTML">
