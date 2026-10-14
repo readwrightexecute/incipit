@@ -420,8 +420,8 @@ def test_assemble_jira_export_groups_functional_requirements_into_stories():
                 title="Functional Requirements",
                 instruction="",
                 content=(
-                    "FR1: Partners can submit onboarding applications.\n"
-                    "FR-2: Staff can approve or reject applications.\n"
+                    "- FR1: The system SHALL let partners submit onboarding applications.\n"
+                    "- FR-2: The system SHALL let staff approve or reject applications.\n"
                 ),
             ),
             Section(
@@ -429,11 +429,11 @@ def test_assemble_jira_export_groups_functional_requirements_into_stories():
                 title="Acceptance Criteria",
                 instruction="",
                 content=(
-                    "AC-FR1: Given a partner application, when it is submitted, "
+                    "- AC1: [FR1] Given a partner application, when it is submitted, "
                     "then staff can review it.\n"
-                    "AC-FR-2: Given a pending application, when staff approves it, "
+                    "- AC2: [FR-2] Given a pending application, when staff approves it, "
                     "then the partner is activated.\n"
-                    "AC-EDGE: The export preserves criteria that do not map to a "
+                    "- AC3: The export preserves criteria that do not map to a "
                     "functional requirement.\n"
                 ),
             ),
@@ -445,22 +445,21 @@ def test_assemble_jira_export_groups_functional_requirements_into_stories():
     assert out.startswith("# Jira Export")
     assert "## Epic" in out
     assert "Launch partner onboarding" in out
-    assert "**Project type:** existing" in out
-    assert "**Existing repository:** https://github.com/acme/portal" in out
-    assert "## Stories" in out
-    assert "### Story FR1" in out
-    assert "Partners can submit onboarding applications." in out
-    assert "AC-FR1: Given a partner application" in out
-    assert "### Story FR-2" in out
-    assert "Staff can approve or reject applications." in out
-    assert "AC-FR-2: Given a pending application" in out
-    assert "### Unmatched Acceptance Criteria" in out
-    assert "AC-EDGE: The export preserves criteria" in out
+    assert "Summary: Launch partner onboarding" in out
+    assert "- Existing repository: https://github.com/acme/portal" in out
+    assert "## Child Stories" in out
+    assert "- Story summary: FR1: The system SHALL let partners submit onboarding applications." in out
+    assert "AC1: [FR1] Given a partner application" in out
+    assert "- Story summary: FR2: The system SHALL let staff approve or reject applications." in out
+    assert "AC2: [FR-2] Given a pending application" in out
+    assert "## Unmatched Acceptance Criteria" in out
+    assert "AC3: The export preserves criteria" in out
 
-    assert out.index("### Story FR1") < out.index("AC-FR1:")
-    assert out.index("AC-FR1:") < out.index("### Story FR-2")
-    assert out.index("### Story FR-2") < out.index("AC-FR-2:")
-    assert out.index("AC-FR-2:") < out.index("### Unmatched Acceptance Criteria")
+    stories = out.split("## Child Stories", 1)[1]
+    assert stories.index("Story summary: FR1") < stories.index("AC1:")
+    assert stories.index("AC1:") < stories.index("Story summary: FR2")
+    assert stories.index("Story summary: FR2") < stories.index("AC2:")
+    assert stories.index("AC2:") < stories.index("## Unmatched Acceptance Criteria")
 
 
 def test_assemble_jira_export_parses_bold_markdown_requirement_and_criteria_labels():
@@ -493,11 +492,10 @@ def test_assemble_jira_export_parses_bold_markdown_requirement_and_criteria_labe
 
     out = flow.assemble_jira_export(s)
 
-    assert "### Story FR1" in out
-    assert "Users can configure billing alert thresholds." in out
+    assert "## Child Stories" in out
+    assert "Story summary: FR1: Users can configure billing alert thresholds." in out
     assert "AC-FR1: Given a threshold" in out
-    assert "### Story FR-2" in out
-    assert "Users can preview who will receive an alert." in out
+    assert "Story summary: FR2: Users can preview who will receive an alert." in out
     assert "AC-FR-2: Given recipients" in out
     assert "**FR1:**" not in out
     assert "**AC-FR1:**" not in out
@@ -529,10 +527,79 @@ def test_assemble_jira_export_uses_single_fallback_story_without_requirements():
 
     assert out.startswith("# Jira Export")
     assert "## Epic" in out
-    assert "## Stories" in out
-    assert "### Story 1" in out
+    assert "## Child Stories" in out
+    assert "- Story summary: 1: Improve account audit logging" in out
     assert "Improve account audit logging" in out
     assert "Add durable audit events for account mutations." in out
     assert "AC1: Audit events include actor, target account, and timestamp." in out
     assert "### Story FR" not in out
-    assert "### Unmatched Acceptance Criteria" not in out
+    assert "## Unmatched Acceptance Criteria" not in out
+
+
+def test_jira_epic_summary_prefers_parseable_non_generic_title():
+    s = _session(
+        idea="Incipit mega-prompt",
+        project_type="new",
+        stakes="serious",
+        form_factor="web app",
+        sections=[
+            Section(
+                id="goals",
+                title="Goals & Background",
+                instruction="",
+                content=(
+                    "Epic Summary: Export implementation briefs as Jira-ready epics\n"
+                    "Outcome: Teams can create scoped Jira work from a brief."
+                ),
+            )
+        ],
+    )
+
+    assert flow.jira_epic_summary(s) == "Export implementation briefs as Jira-ready epics"
+
+
+def test_jira_epic_summary_parses_bolded_label():
+    s = _session(
+        idea="Fallback",
+        project_type="new",
+        stakes="serious",
+        form_factor="web app",
+        sections=[
+            Section(
+                id="goals",
+                title="Goals & Background",
+                instruction="",
+                content="**Epic Summary:** Create readable Jira epics from Incipit briefs",
+            )
+        ],
+    )
+
+    assert flow.jira_epic_summary(s) == "Create readable Jira epics from Incipit briefs"
+
+
+def test_jira_export_validation_notes_cover_fr_ac_reference_problems():
+    s = _session(
+        idea="Improve billing alerts",
+        project_type="new",
+        stakes="internal",
+        form_factor="API/service",
+        sections=[
+            Section(
+                id="functional_requirements",
+                title="Functional Requirements",
+                instruction="",
+                content="- FR1: The system SHALL send billing alerts.\n- FR2: The system SHALL preview recipients.",
+            ),
+            Section(
+                id="acceptance_criteria",
+                title="Acceptance Criteria",
+                instruction="",
+                content="- AC1: [FR1, FR9] Given a bill, when due, then an alert is sent.",
+            ),
+        ],
+    )
+
+    notes = flow.jira_export_validation_notes(s)
+
+    assert "FR2 has no mapped acceptance criteria." in notes
+    assert any("references unknown FR9" in note for note in notes)
