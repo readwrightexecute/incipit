@@ -1,13 +1,15 @@
+{% set status_oob = status_oob|default(oob|default(false)) %}
+{% set questions_oob = questions_oob|default(oob|default(false)) %}
 {% if s.error %}
-{% if oob %}<div id="status-bar" hx-swap-oob="innerHTML"></div>{% endif %}
-<div id="questions"{% if oob %} hx-swap-oob="true"{% endif %}>
+{% if status_oob %}<div id="status-bar" hx-swap-oob="innerHTML"></div>{% endif %}
+<div id="questions"{% if questions_oob %} hx-swap-oob="true"{% endif %}>
   <p class="error">Generation failed: {{ s.error }}</p>
   <p><a href="/" role="button" class="secondary">Start over</a></p>
 </div>
 {% elif s.phase == 'clarify' and s.qas %}
-{% if oob %}<div id="status-bar" hx-swap-oob="innerHTML"></div>{% endif %}
+{% if status_oob %}<div id="status-bar" hx-swap-oob="innerHTML"></div>{% endif %}
 {# Ready: plain div, no auto-refresh attrs — typed answers must survive #}
-<div id="questions"{% if oob %} hx-swap-oob="true"{% endif %}>
+<div id="questions"{% if questions_oob %} hx-swap-oob="true"{% endif %}>
   <form hx-post="/sessions/{{ s.id }}/answers" hx-target="#wizard" hx-swap="innerHTML">
     <p>Answer what you can — anything you skip falls back to the stated assumption.</p>
     {% for qa in s.qas %}
@@ -33,7 +35,7 @@
 </div>
 {% else %}
 {# Waiting: keeps refreshing itself via SSE pokes + 10s polling fallback #}
-<div id="questions"{% if oob %} hx-swap-oob="true"{% endif %}
+<div id="questions"{% if questions_oob %} hx-swap-oob="true"{% endif %}
      hx-get="/sessions/{{ s.id }}/questions"
      hx-trigger="sse:questions_ready, sse:error, every 10s"
      hx-swap="outerHTML">

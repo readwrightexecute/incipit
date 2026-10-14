@@ -372,7 +372,7 @@ async def questions_partial(request: Request, sid: str):
     s = state.get(sid)
     if s is None:
         return _render("expired.html", request)
-    return _render("partials/question_list.html", request, s=s, oob=True)
+    return _render("partials/question_list.html", request, s=s, status_oob=True)
 
 
 @app.post("/sessions/{sid}/answers", response_class=HTMLResponse)

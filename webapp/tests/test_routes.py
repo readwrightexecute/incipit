@@ -49,14 +49,17 @@ def test_party_questions_tolerates_missing_fields():
 
 def test_questions_poll_clears_stale_status_bar():
     """If the browser missed the final SSE clear, the polling fallback should
-    clear the initial cold-start status when questions are ready."""
+    clear the initial cold-start status when questions are ready without marking
+    the polling target itself as an out-of-band swap."""
     s = state.create()
     s.phase = "clarify"
     s.qas = [QA(question="Q1", assumption="A1")]
 
     resp = asyncio.run(main.questions_partial(_FakeRequest(), s.id))
+    body = resp.body.decode()
 
-    assert 'id="status-bar" hx-swap-oob="innerHTML"' in resp.body.decode()
+    assert 'id="status-bar" hx-swap-oob="innerHTML"' in body
+    assert 'id="questions" hx-swap-oob="true"' not in body
 
 
 def test_last_section_poll_clears_stale_status_bar():
