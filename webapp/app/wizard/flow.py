@@ -822,8 +822,9 @@ def assemble_final(s: Session) -> str:
         parts.append(f"**Existing repository:** {s.repo_url} — integrate with the "
                      "current codebase; prefer additive, non-breaking changes.")
     parts.append("")
+    parts += [assemble_planning_summary(s), ""]
     for sec in s.sections:
-        parts += [f"## {sec.title}", "", sec.content, ""]
+        parts += [f"## {sec.title}", "", _format_section_content(sec), ""]
     parts += [ENGINEERING_STANDARDS_SECTION, ""]
     return "\n".join(parts)
 
@@ -858,8 +859,111 @@ def _plain_blocks(content: str) -> list[str]:
     return [line.strip(" -*\t") for line in content.splitlines() if line.strip()]
 
 
+
 def _clean_label_value(text: str) -> str:
-    return re.sub(r"\s+", " ", (text or "").strip(" -*\t")).strip()
+    text = re.sub(r"^#{1,6}\s*", "", text or "")
+    text = re.sub(r"^(?:[-*+]|\d+[.)])\s*", "", text)
+    text = text.replace("**", "").replace("__", "").replace("`", "")
+    return re.sub(r"\s+", " ", text.strip(" -*_\t")).strip()
+
+
+def _section_matches(sec: Section, *needles: str) -> bool:
+    haystack = f"{sec.id} {sec.title}".lower().replace("-", "_")
+    return any(needle in haystack for needle in needles)
+
+
+_JIRA_SUMMARY_MAX = 255
+_JIRA_TITLE_LABEL_RE = re.compile(
+    r"^(?:project\s+)?(?:epic\s+summary|title|name|summary|epic|idea)"
+    r"(?:\s+[:\-]\s*|\s*:\s*)",
+    re.IGNORECASE,
+)
+_JIRA_GENERIC_PREFIX_RE = re.compile(
+    r"^(?:incipit\s+)?(?:mega[-\s]prompt\b|implementation[-\s]+brief\b|brief\b)"
+    r"(?:\s+(?:for|about)|\s*:\s*|\s+[-<]\s+)?",
+    re.IGNORECASE,
+)
+_JIRA_GENERIC_TITLE_RE = re.compile(
+    r"^(?:incipit\s+)?(?:mega[-\s]?prompt|brief|implementation\s+brief|jira\s+export)$",
+    re.IGNORECASE,
+)
+_JIRA_NONSPECIFIC_HEADING_RE = re.compile(
+    r"#?(?:#+\s*)?(?:goals?(?:\s*(?:[&]\s*|and\s+|and\b)background)?|overview|background|summary|"
+    r"introduction|intro|about|project|about\s+this\s+project)\s*$",
+    re.IGNORECASE,
+)
+_GOALS_LABEL_RE = re.compile(
+    r"^(?:epic summary|summary|outcome|planning summary|background)\s*:", re.I
+)
+
+
+def _jira_title_lines(content: str) -> list[str]:
+    """Explicit generated headings and title labels only, in order."""
+    return [
+        line.strip() for line in content.splitlines() if line.strip()
+        and (line.startswith("#")
+             or _JIRA_TITLE_LABEL_RE.match(line.strip().lstrip("-*+ \t")))
+    ]
+
+
+def _jira_first_line(content: str) -> str:
+    lines = [line.strip() for line in content.splitlines() if line.strip()]
+    return lines[0] if lines else ""
+
+
+def _truncate_jira_summary(text: str) -> str:
+    if len(text) <= _JIRA_SUMMARY_MAX:
+        return text
+    shortened = text[:_JIRA_SUMMARY_MAX].rsplit(" ", 1)[0].rstrip(" .,:;-")
+    return shortened or text[:_JIRA_SUMMARY_MAX].rstrip()
+
+
+def _clean_jira_title(raw: str) -> str:
+    title = " ".join((raw or "").split())
+    if not title:
+        return ""
+    title = re.sub(r"^#{1,6}\s*", "", title)
+    title = re.sub(r"^(?:[-*+]|\d+[.)])\s*", "", title)
+    title = re.sub(r"^\[[ xX]\]\s*", "", title)
+    title = title.strip(" `*_\"'")
+    title = _JIRA_TITLE_LABEL_RE.sub("", title).strip()
+    title = _JIRA_GENERIC_PREFIX_RE.sub("", title).strip()
+    title = title.strip(" .,:;-<>`*_\"'")
+    title = " ".join(title.split())
+    if not title:
+        return ""
+    if _JIRA_NONSPECIFIC_HEADING_RE.match(title):
+        return ""
+    if _JIRA_GENERIC_TITLE_RE.match(title):
+        return ""
+    return _truncate_jira_summary(title[:1].upper() + title[1:])
+
+
+def _is_generic_epic_summary(value: str) -> bool:
+    cleaned = _clean_jira_title(value)
+    return not cleaned
+
+
+def _fallback_epic_summary(s: Session) -> str:
+    return _clean_jira_title(s.idea) or "Implementation brief"
+
+
+def jira_epic_summary(s: Session) -> str:
+    """Derive a Jira Epic title from generated brief content without an LLM call."""
+    overview = _matching_section(s, "goals", "overview", "background")
+    sources: list[str] = []
+    if overview:
+        sources.extend(_jira_title_lines(overview.content))
+    sources.append(s.idea)
+    for sec in s.sections:
+        if sec is not overview:
+            sources.append(_jira_first_line(sec.content))
+
+    for source in sources:
+        title = _clean_jira_title(source)
+        if title:
+            return title
+    return "Implementation brief"
 
 
 _EMPH = r"(?:\*\*|__|\*|_|`)?"
@@ -886,12 +990,8 @@ def _referenced_req_ids(text: str) -> set[str]:
 
 
 def _criteria_for_requirement(requirement_id: str, criteria: list[str]) -> list[str]:
-    matched: list[str] = []
     normalized = _normalize_req_id(requirement_id)
-    for criterion in criteria:
-        if normalized in _referenced_req_ids(criterion):
-            matched.append(criterion)
-    return matched
+    return [criterion for criterion in criteria if normalized in _referenced_req_ids(criterion)]
 
 
 def _functional_requirements(s: Session) -> list[tuple[str, str]]:
@@ -920,50 +1020,10 @@ def _acceptance_criteria(s: Session) -> list[str]:
 def _labeled_value(content: str, label: str) -> str:
     prefix = f"{label.lower()}:"
     for raw_line in content.splitlines():
-        line = re.sub(r"^[-*]\s+", "", raw_line.strip())
-        line = line.replace("**", "").replace("__", "").strip()
+        line = _clean_label_value(raw_line)
         if line.lower().startswith(prefix):
             return _clean_label_value(line.split(":", 1)[1])
     return ""
-
-
-_GENERIC_EPIC_TITLES = {
-    "incipit mega-prompt",
-    "incipit megaprompt",
-    "mega-prompt",
-    "megaprompt",
-    "implementation brief",
-    "jira epic",
-}
-
-
-def _is_generic_epic_summary(value: str) -> bool:
-    cleaned = _clean_label_value(value).lower().strip(" .")
-    return not cleaned or cleaned in _GENERIC_EPIC_TITLES
-
-
-def _fallback_epic_summary(s: Session) -> str:
-    idea = _clean_label_value(s.idea)
-    if not idea:
-        return "Implement scoped product outcome"
-    # Keep Jira summaries compact and title-like, but do not add Incipit branding.
-    return idea[:120].rstrip(" .")
-
-
-def jira_epic_summary(s: Session) -> str:
-    """Return the separately parseable Jira Epic title, falling back safely."""
-    overview = _matching_section(s, "goals", "overview", "background")
-    if overview:
-        for label in ("Epic Summary", "Summary"):
-            value = _labeled_value(overview.content, label)
-            if value and not _is_generic_epic_summary(value):
-                return value[:255]
-    return _fallback_epic_summary(s)[:255]
-
-
-_GOALS_LABEL_RE = re.compile(
-    r"^(?:epic summary|summary|outcome|planning summary|background)\s*:", re.I
-)
 
 
 def _epic_outcome(s: Session) -> str:
@@ -973,13 +1033,89 @@ def _epic_outcome(s: Session) -> str:
             value = _labeled_value(overview.content, label)
             if value:
                 return value
-        # Fall back to the first substantive block, skipping label lines so
-        # "Epic Summary: ..." cannot leak back in as the outcome text.
         blocks = [b for b in _plain_blocks(overview.content)
                   if not _GOALS_LABEL_RE.match(b)]
         if blocks:
             return blocks[0]
     return _fallback_epic_summary(s)
+
+
+def _format_labeled_list(content: str, label_re: re.Pattern) -> str:
+    blocks = _labeled_blocks(content, label_re)
+    if blocks:
+        return "\n".join(f"- {label}: {text}" for label, text in blocks)
+    plain = _plain_blocks(content)
+    return "\n".join(f"- {line}" for line in plain) if plain else content
+
+
+def _format_section_content(sec: Section) -> str:
+    if _section_matches(sec, "functional_requirements", "functional requirements"):
+        return _format_labeled_list(sec.content, _FR_RE)
+    if _section_matches(sec, "non_functional_requirements", "non functional requirements",
+                        "non-functional requirements"):
+        return _format_labeled_list(sec.content, _NFR_RE)
+    if _section_matches(sec, "acceptance_criteria", "acceptance criteria"):
+        return _format_labeled_list(sec.content, _AC_RE)
+    return sec.content
+
+
+def _section_items(s: Session, *needles: str,
+                   label_re: re.Pattern | None = None) -> list[str]:
+    sec = _matching_section(s, *needles)
+    if sec is None:
+        return []
+    if label_re is not None:
+        labeled = _labeled_blocks(sec.content, label_re)
+        if labeled:
+            return [f"{label}: {text}" for label, text in labeled]
+    return _plain_blocks(sec.content)
+
+
+def _goal_items(s: Session) -> list[str]:
+    overview = _matching_section(s, "goals", "overview", "background")
+    if overview is None:
+        return []
+    return [line for line in _plain_blocks(overview.content)
+            if not _JIRA_TITLE_LABEL_RE.match(line) and not _GOALS_LABEL_RE.match(line)]
+
+
+def _first_or_default(items: list[str], default: str) -> str:
+    return items[0] if items else default
+
+
+def _bullet_lines(items: list[str], *, fallback: str, limit: int | None = None) -> list[str]:
+    selected = items[:limit] if limit is not None else items
+    if not selected:
+        selected = [fallback]
+    return [f"- {item}" for item in selected]
+
+
+def assemble_planning_summary(s: Session) -> str:
+    """Small human/Jira-oriented project summary embedded in the final brief."""
+    stories = jira_story_drafts(s)
+    out_of_scope = _section_items(s, "out_of_scope", "out of scope")
+    tech = _section_items(s, "tech_constraints", "tech constraints", "stack")
+    criteria = _section_items(s, "acceptance_criteria", "acceptance criteria", label_re=_AC_RE)
+
+    parts = [
+        "## Planning Summary",
+        "",
+        f"**Problem:** {_epic_outcome(s) or s.idea or '[ASSUMPTION] Problem not captured.'}",
+        "**Target user:** [ASSUMPTION] The primary user described by the idea and clarifications.",
+        "",
+        "**MVP:**",
+        *_bullet_lines([story.summary for story in stories], fallback=s.idea or "Define the MVP."),
+        "",
+        "**Non-goals:**",
+        *_bullet_lines(out_of_scope, fallback="No explicit non-goals captured."),
+        "",
+        "**Primary risks:**",
+        *_bullet_lines(tech[:3], fallback="[ASSUMPTION] No primary risks captured."),
+        "",
+        "**Open decisions:**",
+        *_bullet_lines(criteria[:3], fallback="No open decisions captured."),
+    ]
+    return "\n".join(parts)
 
 
 @dataclass(frozen=True)
@@ -1006,12 +1142,10 @@ def jira_story_drafts(s: Session) -> list[JiraStoryDraft]:
             for req_id, req_text in requirements
         ]
 
-    overview = _matching_section(s, "goals", "overview", "background")
-    description = _epic_outcome(s)
     return [JiraStoryDraft(
         key="1",
         summary=s.idea,
-        description=description,
+        description=_epic_outcome(s),
         acceptance_criteria=criteria,
     )]
 
@@ -1071,6 +1205,38 @@ def jira_export_validation_notes(s: Session) -> list[str]:
     return notes
 
 
+def jira_consistency_warnings(s: Session) -> list[str]:
+    """Compatibility warning wording for the planning-summary Jira projection."""
+    requirements = _functional_requirements(s)
+    criteria = _acceptance_criteria(s)
+    requirement_ids = {_normalize_req_id(req_id) for req_id, _ in requirements}
+    warnings: list[str] = []
+
+    for req_id, _ in requirements:
+        if not _criteria_for_requirement(req_id, criteria):
+            warnings.append(f"{_normalize_req_id(req_id)} has no Acceptance Criteria coverage.")
+
+    for criterion in criteria:
+        refs = _referenced_req_ids(criterion)
+        if not refs:
+            warnings.append(f"Acceptance Criterion lacks FR references: {criterion}")
+        unknown = refs - requirement_ids
+        if unknown:
+            warnings.append(
+                f"Acceptance Criterion references unknown FR ids {', '.join(sorted(unknown))}: "
+                f"{criterion}"
+            )
+
+    if jira_epic_summary(s) == "Implementation brief":
+        warnings.append("Jira Epic Summary is generic; add an explicit Epic Summary.")
+    if not requirements:
+        warnings.append("No FR-labeled requirements found; Jira export uses one fallback story.")
+    for story in jira_story_drafts(s):
+        if len(story.summary) > 180:
+            warnings.append(f"Story {story.key} may be too broad for Jira: {story.summary[:120]}...")
+    return warnings
+
+
 def assemble_jira_export(s: Session) -> str:
     """Build the Jira-specific Epic projection without calling Jira."""
     stories = jira_story_drafts(s)
@@ -1088,23 +1254,29 @@ def assemble_jira_export(s: Session) -> str:
     ]
     done_when = _acceptance_criteria(s)
     validation_notes = jira_export_validation_notes(s)
+    warnings = jira_consistency_warnings(s)
+    epic_outcome = _epic_outcome(s)
     parts = [
         "# Jira Export",
         "",
         "Jira-specific Epic projection adapted from BMAD ticket envelope/story conventions. "
-        "Attach the full Implementation Brief as `mega-prompt.md`.",
+        "Attach the full source brief as `mega-prompt.md`.",
         "",
         "## Epic",
         "",
         f"Summary: {jira_epic_summary(s)}",
-        f"Description: {_epic_outcome(s)}",
+        f"**Summary:** {jira_epic_summary(s)}",
+        f"Description: {epic_outcome}",
         "",
-        f"Outcome: {_epic_outcome(s)}",
+        f"Outcome: {epic_outcome}",
+        f"**Outcome:** {epic_outcome}",
         "",
         "Requirements:",
     ]
     parts += [f"- {item}" for item in (scope_items or ["Use the child stories below as the MVP scope."])]
     parts += [f"- {item}" for item in quality_items]
+    parts += ["", "**MVP Scope:**"]
+    parts += [f"- {story.summary}" for story in stories]
     parts += ["", "Done when:"]
     parts += [f"- {item}" for item in (done_when or ["No explicit acceptance criteria were captured."])]
     parts += ["", "Boundaries:"]
@@ -1113,14 +1285,23 @@ def assemble_jira_export(s: Session) -> str:
         ["No explicit boundaries were captured."]
     )]
     parts += ["", "References:"]
-    parts.append("- attachment — mega-prompt.md, full Implementation Brief")
+    parts.append("- attachment — mega-prompt.md, full source brief")
+    parts += [
+        f"**Project type:** {s.project_type}",
+        f"**Stakes:** {s.stakes}",
+        f"**Form factor:** {s.form_factor}",
+    ]
     if s.project_type == "existing" and s.repo_url:
         parts.append(f"- existing repository — {s.repo_url}")
+        parts.append(f"**Existing repository:** {s.repo_url}")
     parts += ["", "Notes:"]
     parts += [f"- Assumption: {item}" for item in assumptions]
     parts += [f"- Validation: {note}" for note in validation_notes]
     if not assumptions and not validation_notes:
         parts.append("- No notes captured.")
+    if warnings:
+        parts += ["", "## Consistency Checks", ""]
+        parts += [f"- {warning}" for warning in warnings]
     parts += ["", "## Child Stories", ""]
 
     for story in stories:
@@ -1129,6 +1310,8 @@ def assemble_jira_export(s: Session) -> str:
             f"### Story {normalized_key}",
             "",
             f"Title: {story.summary}",
+            f"- **Story summary:** {story.summary}",
+            f"- **User value:** {story.description}",
             "",
             f"Covers: [{normalized_key}]",
             "Verify: Acceptance criteria pass for the covered requirement.",

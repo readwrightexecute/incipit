@@ -205,7 +205,14 @@ def test_export_creates_issue_attaches_and_confirms(monkeypatch, caplog):
     epic = json.loads(issue_route.calls[0].request.content.decode())
     story = json.loads(issue_route.calls[1].request.content.decode())
     assert epic["fields"]["issuetype"]["name"] == "Epic"
+    assert epic["fields"]["summary"] == "A todo app"
+    assert not epic["fields"]["summary"].startswith("Incipit brief:")
     assert epic["fields"]["description"]["type"] == "doc"
+    epic_description = json.dumps(epic["fields"]["description"])
+    assert "Jira Export" in epic_description
+    assert "Child Stories" in epic_description
+    assert "Implementation Brief" not in epic_description
+    assert "# Implementation Brief" in att_route.calls[0].request.content.decode("utf-8", "replace")
     assert story["fields"]["issuetype"]["name"] == "Story"
     assert story["fields"]["parent"]["key"] == "ABC-42"
     assert story["fields"]["description"]["type"] == "doc"
