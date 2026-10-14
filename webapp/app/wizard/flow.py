@@ -872,16 +872,26 @@ _JIRA_GENERIC_TITLE_RE = re.compile(
     r"^(?:incipit\s+)?(?:mega[-\s]?prompt|brief|implementation\s+brief|jira\s+export)$",
     re.IGNORECASE,
 )
+# Bare structural headings that name the section, not the project.
+_JIRA_NONSPECIFIC_HEADING_RE = re.compile(
+    r"#(?:#+)?\s*(?:goals?(?:\s*&\s*background)?|overview|background|summary|"
+    r"introduction|intro|about|project|about\s+this\s+project)\s*$",
+    re.IGNORECASE,
+)
 
 
 def _jira_title_lines(content: str) -> list[str]:
-    """Prefer explicit generated headings/labels, then the first useful line."""
-    lines = [line.strip() for line in content.splitlines() if line.strip()]
-    titled = [
-        line for line in lines
-        if line.startswith("#") or _JIRA_TITLE_LABEL_RE.match(line.lstrip("-*+ \t"))
+    """Explicit generated headings and title labels only, in order."""
+    return [
+        line.strip() for line in content.splitlines() if line.strip()
+        and (line.startswith("#")
+             or _JIRA_TITLE_LABEL_RE.match(line.strip().lstrip("-*+ \t")))
     ]
-    return titled or lines[:1]
+
+
+def _jira_first_line(content: str) -> str:
+    lines = [line.strip() for line in content.splitlines() if line.strip()]
+    return lines[0] if lines else ""
 
 
 def _truncate_jira_summary(text: str) -> str:
@@ -894,6 +904,10 @@ def _truncate_jira_summary(text: str) -> str:
 def _clean_jira_title(raw: str) -> str:
     title = " ".join((raw or "").split())
     if not title:
+        return ""
+    # A bare structural heading such as `# Goals` names the section, not the
+    # project, so it must never become the Epic title.
+    if _JIRA_NONSPECIFIC_HEADING_RE.match(title):
         return ""
     title = re.sub(r"^#{1,6}\s*", "", title)
     title = re.sub(r"^(?:[-*+]|\d+[.)])\s*", "", title)
@@ -917,7 +931,7 @@ def jira_epic_summary(s: Session) -> str:
     sources.append(s.idea)
     for sec in s.sections:
         if sec is not overview:
-            sources.extend(_jira_title_lines(sec.content))
+            sources.append(_jira_first_line(sec.content))
 
     for source in sources:
         title = _clean_jira_title(source)

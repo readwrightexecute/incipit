@@ -439,6 +439,38 @@ def test_jira_epic_summary_uses_labeled_generated_title():
     assert flow.jira_epic_summary(s) == "Account Audit Logging"
 
 
+def test_jira_epic_summary_prefers_idea_over_unlabeled_overview_first_line():
+    s = _session(
+        idea="Ship dark mode",
+        sections=[
+            Section(
+                id="overview",
+                title="Overview",
+                instruction="",
+                content="The app should support dark mode across all screens.\n\n- more",
+            ),
+        ],
+    )
+
+    assert flow.jira_epic_summary(s) == "Ship dark mode"
+
+
+def test_jira_epic_summary_prefers_idea_over_bare_goals_heading():
+    s = _session(
+        idea="Launch partner onboarding",
+        sections=[
+            Section(
+                id="goals",
+                title="Goals & Background",
+                instruction="",
+                content="# Goals\n\nPartner onboarding stuff.",
+            ),
+        ],
+    )
+
+    assert flow.jira_epic_summary(s) == "Launch partner onboarding"
+
+
 def test_jira_epic_summary_collapses_multiline_idea():
     s = _session(
         idea="Improve billing alerts\n\nfor enterprise accounts",
