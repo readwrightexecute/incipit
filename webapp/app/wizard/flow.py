@@ -866,21 +866,24 @@ def _section_matches(sec: Section, *needles: str) -> bool:
 
 _JIRA_SUMMARY_MAX = 255
 _JIRA_TITLE_LABEL_RE = re.compile(
-    r"^(?:project\s+)?(?:epic\s+summary|title|name|summary|epic|idea)\s*[:\-]\s*",
+    r"^(?:project\s+)?(?:epic\s+summary|title|name|summary|epic|idea)"
+    r"(?:\s+[:\-]\s*|\s*:\s*)",
     re.IGNORECASE,
 )
 _JIRA_GENERIC_PREFIX_RE = re.compile(
-    r"^(?:incipit\s+)?(?:mega[-\s]?prompt|brief|implementation\s+brief)"
-    r"\s*(?:for|about|:|-|<)?\s*",
+    r"^(?:incipit\s+)?(?:mega[-\s]prompt\b|implementation[-\s]+brief\b|brief\b)"
+    r"(?:\s+(?:for|about)|\s*:\s*|\s+[-<]\s+)?",
     re.IGNORECASE,
 )
 _JIRA_GENERIC_TITLE_RE = re.compile(
     r"^(?:incipit\s+)?(?:mega[-\s]?prompt|brief|implementation\s+brief|jira\s+export)$",
     re.IGNORECASE,
 )
-# Bare structural headings that name the section, not the project.
+# Bare structural headings that name the section, not the project. Matched
+# against the normalized title (hashes, list markers, emphasis, and label
+# prefixes already stripped) so decorated echoes like `**Project**` are caught.
 _JIRA_NONSPECIFIC_HEADING_RE = re.compile(
-    r"#(?:#+)?\s*(?:goals?(?:\s*&\s*background)?|overview|background|summary|"
+    r"#?(?:#+\s*)?(?:goals?(?:\s*(?:[&]\s*|and\s+|and\b)background)?|overview|background|summary|"
     r"introduction|intro|about|project|about\s+this\s+project)\s*$",
     re.IGNORECASE,
 )
@@ -911,10 +914,6 @@ def _clean_jira_title(raw: str) -> str:
     title = " ".join((raw or "").split())
     if not title:
         return ""
-    # A bare structural heading such as `# Goals` names the section, not the
-    # project, so it must never become the Epic title.
-    if _JIRA_NONSPECIFIC_HEADING_RE.match(title):
-        return ""
     title = re.sub(r"^#{1,6}\s*", "", title)
     title = re.sub(r"^(?:[-*+]|\d+[.)])\s*", "", title)
     title = re.sub(r"^\[[ xX]\]\s*", "", title)
@@ -923,7 +922,14 @@ def _clean_jira_title(raw: str) -> str:
     title = _JIRA_GENERIC_PREFIX_RE.sub("", title).strip()
     title = title.strip(" .,:;-<>`*_\"'")
     title = " ".join(title.split())
-    if not title or _JIRA_GENERIC_TITLE_RE.match(title):
+    if not title:
+        return ""
+    # A bare structural heading such as `# Goals` names the section, not the
+    # project, so it must never become the Epic title. Checked on the
+    # normalized title so decorated echoes like `**Project**` are caught.
+    if _JIRA_NONSPECIFIC_HEADING_RE.match(title):
+        return ""
+    if _JIRA_GENERIC_TITLE_RE.match(title):
         return ""
     return _truncate_jira_summary(title[:1].upper() + title[1:])
 

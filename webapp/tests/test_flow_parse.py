@@ -562,6 +562,71 @@ def test_jira_epic_summary_truncates_long_idea_to_jira_limit():
     assert not summary.endswith(" ")
 
 
+def test_jira_title_cleaning_preserves_hyphenated_first_words():
+    """Label prefixes must not eat hyphenated compound words."""
+    assert flow._clean_jira_title("summary-queue for order events") == \
+        "Summary-queue for order events"
+    assert flow._clean_jira_title("Name-tag printer") == "Name-tag printer"
+    assert flow._clean_jira_title("Title-case editor") == "Title-case editor"
+    assert flow._clean_jira_title("Epic-games launcher") == "Epic-games launcher"
+    # Whole-word label prefixes still strip.
+    assert flow._clean_jira_title("Epic Summary: Self-Service Billing Alerts") == \
+        "Self-Service Billing Alerts"
+    assert flow._clean_jira_title("Project title: Account Audit Logging") == \
+        "Account Audit Logging"
+
+
+def test_jira_title_cleaning_preserves_brief_word_prefixes():
+    """`brief` must only match as a whole word, not as a word prefix."""
+    assert flow._clean_jira_title("briefcase manager") == "Briefcase manager"
+    assert flow._clean_jira_title("Briefing service") == "Briefing service"
+    # Whole-word generic prefixes still strip.
+    assert flow._clean_jira_title("Incipit mega-prompt") == ""
+    assert flow._clean_jira_title("Incipit brief") == ""
+    assert flow._clean_jira_title("brief for payments") == "Payments"
+
+
+def test_jira_title_cleaning_rejects_decorated_bare_headings():
+    """Emphasis/hash-decorated section echoes are non-specific titles."""
+    assert flow._clean_jira_title("### *Goals & Background*") == ""
+    assert flow._clean_jira_title("## Goals and Background") == ""
+    assert flow._clean_jira_title("**Project**") == ""
+    assert flow._clean_jira_title("# Goals") == ""
+    assert flow._clean_jira_title("Summary") == ""
+
+
+def test_jira_epic_summary_prefers_idea_over_decorated_goals_heading():
+    s = _session(
+        idea="Launch partner onboarding",
+        sections=[
+            Section(
+                id="goals",
+                title="Goals & Background",
+                instruction="",
+                content="### *Goals & Background*\n\nPartner onboarding stuff.",
+            ),
+        ],
+    )
+
+    assert flow.jira_epic_summary(s) == "Launch partner onboarding"
+
+
+def test_jira_epic_summary_prefers_idea_over_decorated_project_heading():
+    s = _session(
+        idea="Ship dark mode",
+        sections=[
+            Section(
+                id="goals",
+                title="Goals & Background",
+                instruction="",
+                content="**Project**\n\nThe app should support dark mode.",
+            ),
+        ],
+    )
+
+    assert flow.jira_epic_summary(s) == "Ship dark mode"
+
+
 # --- assemble_jira_export ---------------------------------------------------
 
 def test_assemble_jira_export_groups_functional_requirements_into_stories():
