@@ -34,11 +34,12 @@ def test_download_md_still_returns_flat_implementation_brief():
     assert response.media_type == "text/markdown"
     assert response.headers["content-disposition"] == 'attachment; filename="mega-prompt.md"'
     assert body.startswith("# Implementation Brief")
+    assert "## Planning Summary" in body
     assert "## Functional Requirements" in body
-    assert "FR1: Users can create todos." in body
+    assert "- FR1: Users can create todos." in body
     assert "# Jira Export" not in body
     assert "## Epic" not in body
-    assert "## Stories" not in body
+    assert "## Child Stories" not in body
 
 
 def test_download_jira_md_returns_jira_export():
@@ -69,9 +70,9 @@ def test_download_jira_md_returns_jira_export():
     assert response.headers["content-disposition"] == 'attachment; filename="jira-export.md"'
     assert body.startswith("# Jira Export")
     assert "## Epic" in body
-    assert "## Stories" in body
+    assert "## Child Stories" in body
     assert "### Story FR1" in body
-    assert "Users can create todos." in body
+    assert "- **Story summary:** Users can create todos." in body
     assert "AC-FR1: Given a todo" in body
     assert "# Implementation Brief" not in body
 

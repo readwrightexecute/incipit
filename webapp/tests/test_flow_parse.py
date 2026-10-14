@@ -327,6 +327,7 @@ def test_assemble_final_structure():
     assert out.startswith("# Implementation Brief")
     assert "**Project idea (verbatim from the author):** A todo app" in out
     assert "**Form factor:** web app" in out
+    assert "## Planning Summary" in out
     assert "## Project Overview" in out
     assert "It tracks todos." in out
     assert "## Tech Constraints" in out
@@ -405,6 +406,227 @@ def test_assemble_final_standards_section_relates_to_existing_repository():
     assert "repository guidance" in out[standards_index:].lower()
 
 
+def test_assemble_final_formats_requirement_sections_as_markdown_lists():
+    s = _session(
+        idea="Improve billing alerts",
+        project_type="new",
+        stakes="serious",
+        form_factor="web app",
+        sections=[
+            Section(
+                id="functional_requirements",
+                title="Functional Requirements",
+                instruction="",
+                content="FR1: The system SHALL save alert thresholds.\nFR2: The system SHALL preview recipients.",
+            ),
+            Section(
+                id="non_functional_requirements",
+                title="Non-Functional Requirements",
+                instruction="",
+                content="NFR1: The system SHALL mark invented latency as [ASSUMPTION].",
+            ),
+            Section(
+                id="acceptance_criteria",
+                title="Acceptance Criteria",
+                instruction="",
+                content="AC1: [FR1] Given a threshold, when saved, then it persists.",
+            ),
+        ],
+    )
+
+    out = flow.assemble_final(s)
+
+    assert "## Functional Requirements\n\n- FR1: The system SHALL save alert thresholds." in out
+    assert "- FR2: The system SHALL preview recipients." in out
+    assert "## Non-Functional Requirements\n\n- NFR1: The system SHALL mark" in out
+    assert "## Acceptance Criteria\n\n- AC1: [FR1] Given a threshold" in out
+
+
+# --- jira_epic_summary ------------------------------------------------------
+
+def test_jira_epic_summary_prefers_generated_section_heading_over_generic_idea():
+    s = _session(
+        idea="Incipit mega-prompt",
+        sections=[
+            Section(
+                id="goals",
+                title="Goals & Background",
+                instruction="",
+                content="# Partner Onboarding Portal\n\n- Let partners apply online.",
+            ),
+        ],
+    )
+
+    assert flow.jira_epic_summary(s) == "Partner Onboarding Portal"
+
+
+def test_jira_epic_summary_uses_labeled_generated_title():
+    s = _session(
+        idea="Incipit brief",
+        sections=[
+            Section(
+                id="goals",
+                title="Goals & Background",
+                instruction="",
+                content="Project title: Account Audit Logging\n\n- Capture durable audit events.",
+            ),
+        ],
+    )
+
+    assert flow.jira_epic_summary(s) == "Account Audit Logging"
+
+
+def test_jira_epic_summary_prefers_idea_over_unlabeled_overview_first_line():
+    s = _session(
+        idea="Ship dark mode",
+        sections=[
+            Section(
+                id="overview",
+                title="Overview",
+                instruction="",
+                content="The app should support dark mode across all screens.\n\n- more",
+            ),
+        ],
+    )
+
+    assert flow.jira_epic_summary(s) == "Ship dark mode"
+
+
+def test_jira_epic_summary_prefers_idea_over_bare_goals_heading():
+    s = _session(
+        idea="Launch partner onboarding",
+        sections=[
+            Section(
+                id="goals",
+                title="Goals & Background",
+                instruction="",
+                content="# Goals\n\nPartner onboarding stuff.",
+            ),
+        ],
+    )
+
+    assert flow.jira_epic_summary(s) == "Launch partner onboarding"
+
+
+def test_jira_epic_summary_uses_explicit_epic_summary_line():
+    s = _session(
+        idea="Incipit mega-prompt",
+        sections=[
+            Section(
+                id="goals",
+                title="Goals & Background",
+                instruction="",
+                content="Epic Summary: Self-Service Billing Alerts\n\n- Reduce missed billing events.",
+            ),
+        ],
+    )
+
+    assert flow.jira_epic_summary(s) == "Self-Service Billing Alerts"
+
+
+def test_jira_epic_summary_collapses_multiline_idea():
+    s = _session(
+        idea="Improve billing alerts\n\nfor enterprise accounts",
+        sections=[],
+    )
+
+    assert flow.jira_epic_summary(s) == "Improve billing alerts for enterprise accounts"
+
+
+def test_jira_epic_summary_falls_back_for_blank_and_generic_content():
+    s = _session(
+        idea="\n\n",
+        sections=[
+            Section(
+                id="goals",
+                title="Goals & Background",
+                instruction="",
+                content="## Incipit mega-prompt",
+            ),
+        ],
+    )
+
+    assert flow.jira_epic_summary(s) == "Implementation brief"
+
+
+def test_jira_epic_summary_truncates_long_idea_to_jira_limit():
+    s = _session(
+        idea="Launch " + "very-long-project-name " * 30,
+        sections=[],
+    )
+
+    summary = flow.jira_epic_summary(s)
+
+    assert len(summary) <= 255
+    assert summary.startswith("Launch very-long-project-name")
+    assert not summary.endswith(" ")
+
+
+def test_jira_title_cleaning_preserves_hyphenated_first_words():
+    """Label prefixes must not eat hyphenated compound words."""
+    assert flow._clean_jira_title("summary-queue for order events") == \
+        "Summary-queue for order events"
+    assert flow._clean_jira_title("Name-tag printer") == "Name-tag printer"
+    assert flow._clean_jira_title("Title-case editor") == "Title-case editor"
+    assert flow._clean_jira_title("Epic-games launcher") == "Epic-games launcher"
+    # Whole-word label prefixes still strip.
+    assert flow._clean_jira_title("Epic Summary: Self-Service Billing Alerts") == \
+        "Self-Service Billing Alerts"
+    assert flow._clean_jira_title("Project title: Account Audit Logging") == \
+        "Account Audit Logging"
+
+
+def test_jira_title_cleaning_preserves_brief_word_prefixes():
+    """`brief` must only match as a whole word, not as a word prefix."""
+    assert flow._clean_jira_title("briefcase manager") == "Briefcase manager"
+    assert flow._clean_jira_title("Briefing service") == "Briefing service"
+    # Whole-word generic prefixes still strip.
+    assert flow._clean_jira_title("Incipit mega-prompt") == ""
+    assert flow._clean_jira_title("Incipit brief") == ""
+    assert flow._clean_jira_title("brief for payments") == "Payments"
+
+
+def test_jira_title_cleaning_rejects_decorated_bare_headings():
+    """Emphasis/hash-decorated section echoes are non-specific titles."""
+    assert flow._clean_jira_title("### *Goals & Background*") == ""
+    assert flow._clean_jira_title("## Goals and Background") == ""
+    assert flow._clean_jira_title("**Project**") == ""
+    assert flow._clean_jira_title("# Goals") == ""
+    assert flow._clean_jira_title("Summary") == ""
+
+
+def test_jira_epic_summary_prefers_idea_over_decorated_goals_heading():
+    s = _session(
+        idea="Launch partner onboarding",
+        sections=[
+            Section(
+                id="goals",
+                title="Goals & Background",
+                instruction="",
+                content="### *Goals & Background*\n\nPartner onboarding stuff.",
+            ),
+        ],
+    )
+
+    assert flow.jira_epic_summary(s) == "Launch partner onboarding"
+
+
+def test_jira_epic_summary_prefers_idea_over_decorated_project_heading():
+    s = _session(
+        idea="Ship dark mode",
+        sections=[
+            Section(
+                id="goals",
+                title="Goals & Background",
+                instruction="",
+                content="**Project**\n\nThe app should support dark mode.",
+            ),
+        ],
+    )
+
+    assert flow.jira_epic_summary(s) == "Ship dark mode"
+
+
 # --- assemble_jira_export ---------------------------------------------------
 
 def test_assemble_jira_export_groups_functional_requirements_into_stories():
@@ -420,8 +642,8 @@ def test_assemble_jira_export_groups_functional_requirements_into_stories():
                 title="Functional Requirements",
                 instruction="",
                 content=(
-                    "FR1: Partners can submit onboarding applications.\n"
-                    "FR-2: Staff can approve or reject applications.\n"
+                    "FR1: The system SHALL let partners submit onboarding applications.\n"
+                    "FR-2: The system SHALL let staff approve or reject applications.\n"
                 ),
             ),
             Section(
@@ -429,9 +651,9 @@ def test_assemble_jira_export_groups_functional_requirements_into_stories():
                 title="Acceptance Criteria",
                 instruction="",
                 content=(
-                    "AC-FR1: Given a partner application, when it is submitted, "
+                    "AC1: [FR1] Given a partner application, when it is submitted, "
                     "then staff can review it.\n"
-                    "AC-FR-2: Given a pending application, when staff approves it, "
+                    "AC2: [FR-2] Given a pending application, when staff approves it, "
                     "then the partner is activated.\n"
                     "AC-EDGE: The export preserves criteria that do not map to a "
                     "functional requirement.\n"
@@ -444,23 +666,26 @@ def test_assemble_jira_export_groups_functional_requirements_into_stories():
 
     assert out.startswith("# Jira Export")
     assert "## Epic" in out
-    assert "Launch partner onboarding" in out
+    assert "**Summary:** Launch partner onboarding" in out
+    assert "**Outcome:** Launch partner onboarding" in out
+    assert "**MVP Scope:**" in out
     assert "**Project type:** existing" in out
     assert "**Existing repository:** https://github.com/acme/portal" in out
-    assert "## Stories" in out
+    assert "## Child Stories" in out
     assert "### Story FR1" in out
-    assert "Partners can submit onboarding applications." in out
-    assert "AC-FR1: Given a partner application" in out
+    assert "- **Story summary:** The system SHALL let partners submit onboarding applications." in out
+    assert "AC1: [FR1] Given a partner application" in out
     assert "### Story FR-2" in out
-    assert "Staff can approve or reject applications." in out
-    assert "AC-FR-2: Given a pending application" in out
+    assert "The system SHALL let staff approve or reject applications." in out
+    assert "AC2: [FR-2] Given a pending application" in out
     assert "### Unmatched Acceptance Criteria" in out
     assert "AC-EDGE: The export preserves criteria" in out
 
-    assert out.index("### Story FR1") < out.index("AC-FR1:")
-    assert out.index("AC-FR1:") < out.index("### Story FR-2")
-    assert out.index("### Story FR-2") < out.index("AC-FR-2:")
-    assert out.index("AC-FR-2:") < out.index("### Unmatched Acceptance Criteria")
+    child_stories = out.split("## Child Stories", 1)[1]
+    assert child_stories.index("### Story FR1") < child_stories.index("AC1: [FR1]")
+    assert child_stories.index("AC1: [FR1]") < child_stories.index("### Story FR-2")
+    assert child_stories.index("### Story FR-2") < child_stories.index("AC2: [FR-2]")
+    assert child_stories.index("AC2: [FR-2]") < child_stories.index("### Unmatched Acceptance Criteria")
 
 
 def test_assemble_jira_export_parses_bold_markdown_requirement_and_criteria_labels():
@@ -529,10 +754,37 @@ def test_assemble_jira_export_uses_single_fallback_story_without_requirements():
 
     assert out.startswith("# Jira Export")
     assert "## Epic" in out
-    assert "## Stories" in out
+    assert "## Child Stories" in out
     assert "### Story 1" in out
     assert "Improve account audit logging" in out
     assert "Add durable audit events for account mutations." in out
     assert "AC1: Audit events include actor, target account, and timestamp." in out
+    assert "No FR-labeled requirements found" in out
     assert "### Story FR" not in out
     assert "### Unmatched Acceptance Criteria" not in out
+
+
+def test_jira_consistency_warnings_cover_missing_and_unknown_fr_refs():
+    s = _session(
+        idea="Improve billing alerts",
+        sections=[
+            Section(
+                id="functional_requirements",
+                title="Functional Requirements",
+                instruction="",
+                content="FR1: The system SHALL save thresholds.\nFR2: The system SHALL send alerts.",
+            ),
+            Section(
+                id="acceptance_criteria",
+                title="Acceptance Criteria",
+                instruction="",
+                content="AC1: [FR1] Given a threshold, when saved, then it persists.\n"
+                        "AC2: [FR9] Given a ghost requirement, when tested, then it fails.",
+            ),
+        ],
+    )
+
+    warnings = flow.jira_consistency_warnings(s)
+
+    assert "FR2 has no Acceptance Criteria coverage." in warnings
+    assert any("unknown FR ids FR9" in warning for warning in warnings)
