@@ -1115,9 +1115,10 @@ async def _export_to_jira(cloud_id, token, site_url, project_key, summary,
     just flag it."""
     loop = asyncio.get_running_loop()
     deadline = loop.time() + timeout
+    remaining = max(0.001, deadline - loop.time())
     epic = await jira.create_issue(
         cloud_id, token, project_key=project_key, summary=summary,
-        issue_type=config.JIRA_EPIC_ISSUE_TYPE, description_adf=adf, timeout=timeout)
+        issue_type=config.JIRA_EPIC_ISSUE_TYPE, description_adf=adf, timeout=remaining)
     key = epic["key"]
     created_stories = []
     not_created_stories = 0
@@ -1170,7 +1171,7 @@ def _jira_story_summary(story) -> str:
         summary = "Incipit story"
     if story.key == "1":
         return summary[:255]
-    return f"{story.key}: {summary}"[:255]
+    return f"{flow._normalize_req_id(story.key)}: {summary}"[:255]
 
 
 def _jira_story_description(story) -> str:

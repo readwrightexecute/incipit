@@ -316,6 +316,81 @@ def test_export_normalizes_fallback_story_summary(monkeypatch):
     assert story["fields"]["summary"] == "Line one Line two"
 
 
+@respx.mock
+def test_export_normalizes_requirement_id_in_story_summary(monkeypatch):
+    issue_route = respx.post(f"{_REST}/issue").mock(
+        side_effect=[
+            httpx.Response(201, json={"key": "ABC-50", "id": 50}),
+            httpx.Response(201, json={"key": "ABC-51", "id": 51}),
+        ])
+    respx.post(f"{_REST}/issue/ABC-50/attachments").mock(
+        return_value=httpx.Response(200, json=[{"id": "1"}]))
+    c = _atlassian_client(monkeypatch)
+    s = _final_session()
+    s.sections = [state.Section(
+        id="requirements",
+        title="Functional Requirements",
+        instruction="",
+        content="FR-1: Preserve mapped acceptance criteria.",
+    )]
+
+    resp = c.post("/api/jira/export", data={"sid": s.id, "project_key": "ABC"})
+
+    assert resp.status_code == 200
+    story = json.loads(issue_route.calls[1].request.content.decode())
+    assert story["fields"]["summary"].startswith("FR1: ")
+
+
+def test_export_recomputes_budget_after_child_story_failure(monkeypatch):
+    clock = {"now": 100.0}
+    calls = []
+    uploads = []
+
+    class FakeLoop:
+        def time(self):
+            return clock["now"]
+
+    async def _create_issue(*args, **kwargs):
+        calls.append(kwargs)
+        if kwargs["issue_type"] == "Epic":
+            clock["now"] += 1.0
+            return {"key": "ABC-60", "id": "60"}
+        clock["now"] += 0.75
+        raise jira.JiraError("story creation timed out")
+
+    async def _upload_attachment(*args, **kwargs):
+        uploads.append(kwargs)
+
+    monkeypatch.setattr(main.asyncio, "get_running_loop", lambda: FakeLoop())
+    monkeypatch.setattr(jira, "create_issue", _create_issue)
+    monkeypatch.setattr(jira, "upload_attachment", _upload_attachment)
+
+    story = main.flow.JiraStoryDraft(
+        key="FR1",
+        summary="Create a story.",
+        description="Create a story.",
+        acceptance_criteria=[],
+    )
+
+    result = _run(main._export_to_jira(
+        _CLOUD,
+        "tok",
+        "https://acme.atlassian.net",
+        "ABC",
+        "Epic summary",
+        {"version": 1, "type": "doc", "content": []},
+        "# Brief",
+        [story],
+        timeout=2.0,
+    ))
+
+    assert calls[0]["timeout"] == 2.0
+    assert calls[1]["timeout"] == 1.0
+    assert result["failed_stories"] == 1
+    assert result["attached"] is False
+    assert uploads == []
+
+
 def test_export_unauthenticated_returns_401(monkeypatch):
     monkeypatch.setattr(config, "ATLASSIAN_OAUTH_CLIENT_ID", "test-atl-id")
     c = TestClient(main.app)
