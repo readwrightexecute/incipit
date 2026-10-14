@@ -961,6 +961,11 @@ def jira_epic_summary(s: Session) -> str:
     return _fallback_epic_summary(s)[:255]
 
 
+_GOALS_LABEL_RE = re.compile(
+    r"^(?:epic summary|summary|outcome|planning summary|background)\s*:", re.I
+)
+
+
 def _epic_outcome(s: Session) -> str:
     overview = _matching_section(s, "goals", "overview", "background")
     if overview:
@@ -968,9 +973,12 @@ def _epic_outcome(s: Session) -> str:
             value = _labeled_value(overview.content, label)
             if value:
                 return value
-        bullets = _plain_blocks(overview.content)
-        if bullets:
-            return bullets[0]
+        # Fall back to the first substantive block, skipping label lines so
+        # "Epic Summary: ..." cannot leak back in as the outcome text.
+        blocks = [b for b in _plain_blocks(overview.content)
+                  if not _GOALS_LABEL_RE.match(b)]
+        if blocks:
+            return blocks[0]
     return _fallback_epic_summary(s)
 
 
@@ -1090,6 +1098,7 @@ def assemble_jira_export(s: Session) -> str:
         "",
         f"Summary: {jira_epic_summary(s)}",
         f"Description: {_epic_outcome(s)}",
+        "",
         f"Outcome: {_epic_outcome(s)}",
         "",
         "Requirements:",
@@ -1120,12 +1129,14 @@ def assemble_jira_export(s: Session) -> str:
             f"### Story {normalized_key}",
             "",
             f"Title: {story.summary}",
-            f"Description: {story.description}",
+            "",
             f"Covers: [{normalized_key}]",
             "Verify: Acceptance criteria pass for the covered requirement.",
             "",
-            "Acceptance Criteria:",
         ]
+        if story.description:
+            parts += ["Description:", story.description, ""]
+        parts += ["Acceptance Criteria:"]
         if story.acceptance_criteria:
             parts += [f"- {criterion}" for criterion in story.acceptance_criteria]
         else:

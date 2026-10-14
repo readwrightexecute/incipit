@@ -599,6 +599,101 @@ def test_jira_epic_summary_parses_bolded_label():
     assert flow.jira_epic_summary(s) == "Create readable Jira epics from Incipit briefs"
 
 
+def test_epic_outcome_fallback_skips_epic_summary_label():
+    s = _session(
+        idea="Build a demo app",
+        project_type="new",
+        stakes="serious",
+        form_factor="web app",
+        sections=[
+            Section(
+                id="goals",
+                title="Goals & Background",
+                instruction="",
+                content=(
+                    "Epic Summary: Build a demo app\n"
+                    "- Bullet one: the demo runs locally.\n"
+                    "- Bullet two: the demo exports its results.\n"
+                ),
+            )
+        ],
+    )
+
+    assert flow._epic_outcome(s) == "Bullet one: the demo runs locally."
+
+    out = flow.assemble_jira_export(s)
+    assert "Description: Bullet one: the demo runs locally." in out
+    assert "Outcome: Bullet one: the demo runs locally." in out
+    assert "Description: Epic Summary:" not in out
+    assert "Outcome: Epic Summary:" not in out
+
+
+def test_epic_outcome_fallback_returns_idea_when_goals_is_all_labels():
+    s = _session(
+        idea="Build a demo app",
+        project_type="new",
+        stakes="serious",
+        form_factor="web app",
+        sections=[
+            Section(
+                id="goals",
+                title="Goals & Background",
+                instruction="",
+                content="Epic Summary: Build a demo app\nOutcome:\n",
+            )
+        ],
+    )
+
+    assert flow._epic_outcome(s) == "Build a demo app"
+
+
+def test_assemble_jira_export_story_labels_do_not_collapse_in_adf():
+    s = _session(
+        idea="Launch partner onboarding",
+        project_type="new",
+        stakes="serious",
+        form_factor="web app",
+        sections=[
+            Section(
+                id="functional_requirements",
+                title="Functional Requirements",
+                instruction="",
+                content=(
+                    "- FR1: The system SHALL let partners submit onboarding applications.\n"
+                    "- FR2: The system SHALL let staff approve applications.\n"
+                ),
+            ),
+            Section(
+                id="acceptance_criteria",
+                title="Acceptance Criteria",
+                instruction="",
+                content="- AC1: [FR1] Given an application, then staff can review it.\n",
+            ),
+        ],
+    )
+
+    out = flow.assemble_jira_export(s)
+    story = out.split("### Story FR1", 1)[1].split("### Story FR2", 1)[0]
+    # Title and Covers stay their own paragraph; description is its own block.
+    assert "Title: The system SHALL let partners submit onboarding applications.\n\nCovers: [FR1]" in story
+    assert "Description:\nThe system SHALL let partners submit onboarding applications.\n\nAcceptance Criteria:" in story
+
+    from app import markdown_adf
+    adf = markdown_adf.to_adf(out)
+    paragraphs = [n for n in adf["content"] if n["type"] == "paragraph"]
+    texts = ["".join(n.get("text", "") for n in p["content"]) for p in paragraphs]
+    # No run-on paragraph merging the Title line with the next label (the old
+    # layout collapsed into "Title: ... Covers: [FR1] Verify: ...").
+    assert not any("Title: " in t and ("Covers:" in t or "Verify:" in t)
+                   for t in texts)
+    # Covers and Verify keep one paragraph (they read as a single label pair).
+    assert "Covers: [FR1] Verify: Acceptance criteria pass for the covered requirement." in texts
+    # The FR text appears as a Description paragraph, not glued onto the Title line.
+    fr_text = "The system SHALL let partners submit onboarding applications."
+    assert "Description: " + fr_text in texts
+    assert fr_text not in texts
+
+
 def test_jira_export_validation_notes_cover_fr_ac_reference_problems():
     s = _session(
         idea="Improve billing alerts",
