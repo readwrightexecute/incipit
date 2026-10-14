@@ -1080,7 +1080,8 @@ async def jira_export(request: Request, sid: str = Form(...),
     cloud_id = entry.meta.get("cloud_id", "")
     site_url = entry.meta.get("site_url", "")
     md = flow.assemble_final(s)
-    adf = markdown_adf.to_adf(md)
+    jira_md = flow.assemble_jira_export(s)
+    adf = markdown_adf.to_adf(jira_md)
     summary = _jira_summary(s)
     budget = config.JIRA_EXPORT_TIMEOUT_MS / 1000
 

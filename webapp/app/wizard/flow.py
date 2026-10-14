@@ -822,8 +822,9 @@ def assemble_final(s: Session) -> str:
         parts.append(f"**Existing repository:** {s.repo_url} — integrate with the "
                      "current codebase; prefer additive, non-breaking changes.")
     parts.append("")
+    parts += [assemble_planning_summary(s), ""]
     for sec in s.sections:
-        parts += [f"## {sec.title}", "", sec.content, ""]
+        parts += [f"## {sec.title}", "", _format_section_content(sec), ""]
     parts += [ENGINEERING_STANDARDS_SECTION, ""]
     return "\n".join(parts)
 
@@ -858,9 +859,14 @@ def _plain_blocks(content: str) -> list[str]:
     return [line.strip(" -*\t") for line in content.splitlines() if line.strip()]
 
 
+def _section_matches(sec: Section, *needles: str) -> bool:
+    haystack = f"{sec.id} {sec.title}".lower().replace("-", "_")
+    return any(needle in haystack for needle in needles)
+
+
 _JIRA_SUMMARY_MAX = 255
 _JIRA_TITLE_LABEL_RE = re.compile(
-    r"^(?:project\s+)?(?:title|name|summary|epic|idea)\s*[:\-]\s*",
+    r"^(?:project\s+)?(?:epic\s+summary|title|name|summary|epic|idea)\s*[:\-]\s*",
     re.IGNORECASE,
 )
 _JIRA_GENERIC_PREFIX_RE = re.compile(
@@ -945,6 +951,10 @@ _FR_RE = re.compile(
     rf"^(?:[-*]\s*)?(?:\d+[.)]\s*)?{_EMPH}(FR-?\d+){_EMPH}\s*[:.)-]\s*{_EMPH}(.+)$",
     re.IGNORECASE,
 )
+_NFR_RE = re.compile(
+    rf"^(?:[-*]\s*)?(?:\d+[.)]\s*)?{_EMPH}(NFR-?\d+){_EMPH}\s*[:.)-]\s*{_EMPH}(.+)$",
+    re.IGNORECASE,
+)
 _AC_RE = re.compile(
     rf"^(?:[-*]\s*)?(?:\d+[.)]\s*)?{_EMPH}((?:AC|Acceptance\s*Criterion)[-\w]*){_EMPH}\s*[:.)-]\s*{_EMPH}(.+)$",
     re.IGNORECASE,
@@ -966,6 +976,85 @@ def _criteria_for_requirement(requirement_id: str, criteria: list[str]) -> list[
         if normalized in _referenced_req_ids(criterion):
             matched.append(criterion)
     return matched
+
+
+def _format_labeled_list(content: str, label_re: re.Pattern) -> str:
+    blocks = _labeled_blocks(content, label_re)
+    if blocks:
+        return "\n".join(f"- {label}: {text}" for label, text in blocks)
+    plain = _plain_blocks(content)
+    return "\n".join(f"- {line}" for line in plain) if plain else content
+
+
+def _format_section_content(sec: Section) -> str:
+    if _section_matches(sec, "functional_requirements", "functional requirements"):
+        return _format_labeled_list(sec.content, _FR_RE)
+    if _section_matches(sec, "non_functional_requirements", "non functional requirements",
+                        "non-functional requirements"):
+        return _format_labeled_list(sec.content, _NFR_RE)
+    if _section_matches(sec, "acceptance_criteria", "acceptance criteria"):
+        return _format_labeled_list(sec.content, _AC_RE)
+    return sec.content
+
+
+def _section_items(s: Session, *needles: str,
+                   label_re: re.Pattern | None = None) -> list[str]:
+    sec = _matching_section(s, *needles)
+    if sec is None:
+        return []
+    if label_re is not None:
+        labeled = _labeled_blocks(sec.content, label_re)
+        if labeled:
+            return [f"{label}: {text}" for label, text in labeled]
+    return _plain_blocks(sec.content)
+
+
+def _goal_items(s: Session) -> list[str]:
+    overview = _matching_section(s, "goals", "overview", "background")
+    if overview is None:
+        return []
+    lines = _plain_blocks(overview.content)
+    return [line for line in lines if not _JIRA_TITLE_LABEL_RE.match(line)]
+
+
+def _first_or_default(items: list[str], default: str) -> str:
+    return items[0] if items else default
+
+
+def _bullet_lines(items: list[str], *, fallback: str, limit: int | None = None) -> list[str]:
+    selected = items[:limit] if limit is not None else items
+    if not selected:
+        selected = [fallback]
+    return [f"- {item}" for item in selected]
+
+
+def assemble_planning_summary(s: Session) -> str:
+    """Small human/Jira-oriented project summary embedded in the final brief."""
+    goals = _goal_items(s)
+    stories = jira_story_drafts(s)
+    out_of_scope = _section_items(s, "out_of_scope", "out of scope")
+    tech = _section_items(s, "tech_constraints", "tech constraints", "stack")
+    criteria = _section_items(s, "acceptance_criteria", "acceptance criteria", label_re=_AC_RE)
+
+    parts = [
+        "## Planning Summary",
+        "",
+        f"**Problem:** {_first_or_default(goals, s.idea or '[ASSUMPTION] Problem not captured.')}",
+        f"**Target user:** [ASSUMPTION] The primary user described by the idea and clarifications.",
+        "",
+        "**MVP:**",
+        *_bullet_lines([story.summary for story in stories], fallback=s.idea or "Define the MVP."),
+        "",
+        "**Non-goals:**",
+        *_bullet_lines(out_of_scope, fallback="No explicit non-goals captured."),
+        "",
+        "**Primary risks:**",
+        *_bullet_lines(tech[:3], fallback="[ASSUMPTION] No primary risks captured."),
+        "",
+        "**Open decisions:**",
+        *_bullet_lines(criteria[:3], fallback="No open decisions captured."),
+    ]
+    return "\n".join(parts)
 
 
 @dataclass(frozen=True)
@@ -1000,7 +1089,7 @@ def jira_story_drafts(s: Session) -> list[JiraStoryDraft]:
         ]
 
     overview = _matching_section(s, "goals", "overview", "background")
-    description = overview.content if overview and overview.content else assemble_final(s)
+    description = "\n".join(_goal_items(s)) or (s.idea or "Define the story.")
     return [JiraStoryDraft(
         key="1",
         summary=s.idea,
@@ -1028,38 +1117,101 @@ def jira_unmatched_acceptance_criteria(s: Session) -> list[str]:
     ]
 
 
+def jira_consistency_warnings(s: Session) -> list[str]:
+    req_section = _matching_section(s, "functional_requirements", "functional requirements",
+                                    "requirements")
+    ac_section = _matching_section(s, "acceptance_criteria", "acceptance criteria")
+    requirements = _labeled_blocks(req_section.content, _FR_RE) if req_section else []
+    criteria = [
+        f"{label}: {text}" for label, text in _labeled_blocks(ac_section.content, _AC_RE)
+    ] if ac_section else []
+    requirement_ids = {_normalize_req_id(req_id) for req_id, _ in requirements}
+    warnings: list[str] = []
+
+    for req_id, _ in requirements:
+        if not _criteria_for_requirement(req_id, criteria):
+            warnings.append(f"{_normalize_req_id(req_id)} has no Acceptance Criteria coverage.")
+
+    for criterion in criteria:
+        refs = _referenced_req_ids(criterion)
+        if not refs:
+            warnings.append(f"Acceptance Criterion lacks FR references: {criterion}")
+        unknown = refs - requirement_ids
+        if unknown:
+            warnings.append(
+                f"Acceptance Criterion references unknown FR ids {', '.join(sorted(unknown))}: "
+                f"{criterion}"
+            )
+
+    if jira_epic_summary(s) == "Implementation brief":
+        warnings.append("Jira Epic Summary is generic; add an explicit Epic Summary.")
+    if not requirements:
+        warnings.append("No FR-labeled requirements found; Jira export uses one fallback story.")
+    for story in jira_story_drafts(s):
+        if len(story.summary) > 180:
+            warnings.append(f"Story {story.key} may be too broad for Jira: {story.summary[:120]}...")
+    return warnings
+
+
 def assemble_jira_export(s: Session) -> str:
-    """Build a generic Jira-friendly markdown export without calling Jira."""
+    """Build a Jira-shaped planning projection without calling Jira."""
+    goals = _goal_items(s)
+    stories = jira_story_drafts(s)
+    out_of_scope = _section_items(s, "out_of_scope", "out of scope")
+    nfrs = _section_items(s, "non_functional_requirements", "non functional requirements",
+                          "non-functional requirements", label_re=_NFR_RE)
+    tech = _section_items(s, "tech_constraints", "tech constraints", "stack")
+    criteria = _section_items(s, "acceptance_criteria", "acceptance criteria", label_re=_AC_RE)
+    warnings = jira_consistency_warnings(s)
     parts = [
         "# Jira Export",
         "",
-        "Markdown-only planning export. Create or edit Jira issues manually using the sections below.",
+        "Jira-shaped planning projection. The full brief is attached separately.",
         "",
         "## Epic",
         "",
         f"**Summary:** {jira_epic_summary(s)}",
+        f"**Outcome:** {_first_or_default(goals, s.idea or 'Define the outcome.')}",
+        "",
+        "**MVP Scope:**",
+        *_bullet_lines([story.summary for story in stories], fallback=s.idea or "Define the MVP."),
+        "",
+        "**Out of Scope:**",
+        *_bullet_lines(out_of_scope, fallback="No explicit out-of-scope items captured."),
+        "",
+        "**Success Metrics / Acceptance Signals:**",
+        *_bullet_lines(criteria, fallback="No Acceptance Criteria captured.", limit=8),
+        "",
+        "**Quality / Non-Functional Requirements:**",
+        *_bullet_lines(nfrs, fallback="No Non-Functional Requirements captured.", limit=8),
+        "",
+        "**Dependencies / Assumptions:**",
+        *_bullet_lines(tech, fallback="[ASSUMPTION] No dependencies captured.", limit=8),
+        "",
         f"**Project type:** {s.project_type}",
         f"**Stakes:** {s.stakes}",
         f"**Form factor:** {s.form_factor}",
     ]
     if s.project_type == "existing" and s.repo_url:
         parts.append(f"**Existing repository:** {s.repo_url}")
-    parts += ["", "## Stories", ""]
+    if warnings:
+        parts += ["", "## Consistency Checks", ""]
+        parts += [f"- {warning}" for warning in warnings]
+    parts += ["", "## Child Stories", ""]
 
-    for story in jira_story_drafts(s):
+    for story in stories:
         parts += [
             f"### Story {story.key}",
             "",
-            f"**Summary:** {story.summary}",
-            "",
-            "**Description:**",
-            story.description,
-            "",
+            f"- **Story summary:** {story.summary}",
+            f"- **User value:** {story.description}",
         ]
         if story.acceptance_criteria:
-            parts += ["**Acceptance Criteria:**", ""]
-            parts += [f"- {criterion}" for criterion in story.acceptance_criteria]
-            parts.append("")
+            parts += ["- **Acceptance criteria:**"]
+            parts += [f"  - {criterion}" for criterion in story.acceptance_criteria]
+        else:
+            parts += ["- **Acceptance criteria:** No mapped Acceptance Criteria."]
+        parts.append("")
     remaining_criteria = jira_unmatched_acceptance_criteria(s)
     if remaining_criteria:
         parts += ["### Unmatched Acceptance Criteria", ""]
